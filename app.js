@@ -147,16 +147,29 @@ async function loadData() {
     return;
   }
   
+  // Live Mode: Fetch individual endpoints safely
   try {
-    const all = await apiGet("getAll");
-    MENU = all.menu || [];
-    ORDERS = all.orders || [];
-    EXPENSES = all.expenses || [];
+    const resMenu = await apiGet("getMenu");
+    MENU = Array.isArray(resMenu) && resMenu.length > 0 ? resMenu : MENU_SEED.slice();
   } catch (e) {
-    console.warn("Fallback to individual gets", e);
-    MENU = await apiGet("getMenu");
-    ORDERS = await apiGet("getOrders");
-    EXPENSES = await apiGet("getExpenses");
+    console.warn("Error fetching getMenu, using fallback", e);
+    MENU = MENU_SEED.slice();
+  }
+
+  try {
+    const resOrders = await apiGet("getOrders");
+    ORDERS = Array.isArray(resOrders) ? resOrders : [];
+  } catch (e) {
+    console.warn("Error fetching getOrders", e);
+    ORDERS = LS.get("kasir_orders", []);
+  }
+
+  try {
+    const resExpenses = await apiGet("getExpenses");
+    EXPENSES = Array.isArray(resExpenses) ? resExpenses : [];
+  } catch (e) {
+    console.warn("Error fetching getExpenses", e);
+    EXPENSES = LS.get("kasir_expenses", []);
   }
 }
 
