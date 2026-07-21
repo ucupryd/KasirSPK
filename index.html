@@ -28,11 +28,12 @@
       </div>
     </div>
     
-    <!-- Desktop Navigation -->
+    <!-- Desktop Navigation (5 Tabs) -->
     <nav class="desktop-nav" aria-label="Navigasi Utama">
       <button data-view="kasir" class="active">🛒 Kasir</button>
-      <button data-view="pemasukan">💰 Pemasukan</button>
-      <button data-view="histori">📜 Histori Pesanan</button>
+      <button data-view="keuangan">💰 Keuangan</button>
+      <button data-view="pengeluaran">💸 Pengeluaran</button>
+      <button data-view="histori">📜 Histori</button>
       <button data-view="belum">
         ⏳ Belum Bayar
         <span class="count nav-badge-belum" style="display:none;">0</span>
@@ -41,7 +42,7 @@
   </header>
 
   <main>
-    <!-- ===== LAYAR KASIR ===== -->
+    <!-- ===== 1. LAYAR KASIR ===== -->
     <section class="view active" id="view-kasir">
       <div class="kasir">
         <div>
@@ -68,23 +69,26 @@
       </div>
     </section>
 
-    <!-- ===== LAYAR PEMASUKAN ===== -->
-    <section class="view" id="view-pemasukan">
-      <h1 class="title">Pemasukan</h1>
-      <p class="sub">Ringkasan & performa penjualan kantin.</p>
+    <!-- ===== 2. LAYAR KEUANGAN (Pemasukan, Pengeluaran & Laba/Rugi) ===== -->
+    <section class="view" id="view-keuangan">
+      <h1 class="title">Ringkasan Keuangan</h1>
+      <p class="sub">Laba/Rugi, pemasukan lunas, dan performa penjualan kantin.</p>
       
-      <div class="toolbar" id="pemFilter">
+      <div class="toolbar" id="keuFilter">
         <button class="chip active" data-range="today">Hari Ini</button>
         <button class="chip" data-range="all">Semua Waktu</button>
       </div>
 
-      <!-- Stat Cards Grid -->
-      <div class="stat-grid" id="statGrid"></div>
+      <!-- Hero Financial Stat Cards (Pemasukan, Pengeluaran, Laba/Rugi) -->
+      <div class="stat-grid" id="keuHeroGrid"></div>
+
+      <!-- Activity Stat Cards (Belum Dibayar, Count, Items) -->
+      <div class="stat-grid" id="keuActGrid"></div>
 
       <!-- Pure SVG Sales Chart -->
       <div class="panel">
         <div class="panel-header">
-          <span>📊 Grafik Penjualan</span>
+          <span>📊 Grafik Penjualan (Lunas)</span>
         </div>
         <div class="chart-container" id="salesChart"></div>
       </div>
@@ -109,7 +113,79 @@
       </div>
     </section>
 
-    <!-- ===== LAYAR HISTORI ===== -->
+    <!-- ===== 3. LAYAR PENGELUARAN (BARU) ===== -->
+    <section class="view" id="view-pengeluaran">
+      <h1 class="title">Pengeluaran Operasional</h1>
+      <p class="sub">Catat modal barang, transport, & biaya operasional kantin.</p>
+
+      <!-- Form Tambah Pengeluaran -->
+      <div class="panel" style="margin-bottom: 24px;">
+        <div class="panel-header">
+          <span>➕ Tambah Pengeluaran Baru</span>
+        </div>
+        <form id="expForm" class="form-grid">
+          <div class="form-group">
+            <label for="expKet">Keterangan Pengeluaran</label>
+            <input id="expKet" placeholder="cth: Restok Teajus & Es Batu" required />
+          </div>
+          <div class="form-group">
+            <label for="expKat">Kategori</label>
+            <select id="expKat">
+              <option value="Modal Barang">Modal Barang</option>
+              <option value="Operasional">Operasional</option>
+              <option value="Transport">Transport</option>
+              <option value="Lainnya" selected>Lainnya</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="expJml">Jumlah (Rp)</label>
+            <input id="expJml" type="number" min="100" placeholder="cth: 15000" required />
+          </div>
+          <button type="submit" class="btn-primary" id="expSubmit" style="height: 44px; margin-top: auto;">
+            + Tambah
+          </button>
+        </form>
+      </div>
+
+      <div class="toolbar" id="expFilter">
+        <button class="chip active" data-range="today">Hari Ini</button>
+        <button class="chip" data-range="all">Semua Waktu</button>
+      </div>
+
+      <!-- Total Expense Summary -->
+      <div class="stat-grid" style="grid-template-columns: 1fr; margin-bottom: 20px;">
+        <div class="stat">
+          <div class="stat-ico r">💸</div>
+          <div>
+            <div class="stat-label">Total Pengeluaran</div>
+            <div class="stat-value red" id="expTotalVal">Rp 0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Expense Table Panel (Desktop) -->
+      <div class="panel">
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Waktu</th>
+                <th>Keterangan</th>
+                <th>Kategori</th>
+                <th class="num">Jumlah</th>
+                <th style="text-align:right;">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="expBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Mobile Cards for Expense -->
+      <div id="expMobileCards" class="mobile-cards"></div>
+    </section>
+
+    <!-- ===== 4. LAYAR HISTORI ===== -->
     <section class="view" id="view-histori">
       <h1 class="title">Histori Pesanan</h1>
       <p class="sub">Semua transaksi pesanan yang tercatat.</p>
@@ -120,8 +196,7 @@
       </div>
 
       <div class="panel">
-        <!-- Desktop Table View -->
-        <div class="tablewrap" style="display: var(--desktop-display, block);">
+        <div class="tablewrap">
           <table>
             <thead>
               <tr>
@@ -137,17 +212,15 @@
         </div>
       </div>
 
-      <!-- Mobile Cards View -->
       <div id="histMobileCards" class="mobile-cards"></div>
     </section>
 
-    <!-- ===== LAYAR BELUM BAYAR ===== -->
+    <!-- ===== 5. LAYAR BELUM BAYAR ===== -->
     <section class="view" id="view-belum">
       <h1 class="title">Belum Bayar</h1>
       <p class="sub">Daftar pesanan yang masih menunggu pembayaran.</p>
       
       <div class="panel">
-        <!-- Desktop Table View -->
         <div class="tablewrap">
           <table>
             <thead>
@@ -164,7 +237,6 @@
         </div>
       </div>
 
-      <!-- Mobile Cards View -->
       <div id="belumMobileCards" class="mobile-cards"></div>
     </section>
   </main>
@@ -200,15 +272,19 @@
     </div>
   </div>
 
-  <!-- Mobile Bottom Navigation Bar -->
+  <!-- Mobile Bottom Navigation Bar (5 Icons) -->
   <nav class="bottom-nav" aria-label="Navigasi Mobile">
     <button data-view="kasir" class="active">
       <span class="nav-ico">🛒</span>
       <span>Kasir</span>
     </button>
-    <button data-view="pemasukan">
+    <button data-view="keuangan">
       <span class="nav-ico">💰</span>
-      <span>Pemasukan</span>
+      <span>Keuangan</span>
+    </button>
+    <button data-view="pengeluaran">
+      <span class="nav-ico">💸</span>
+      <span>Pengeluaran</span>
     </button>
     <button data-view="histori">
       <span class="nav-ico">📜</span>

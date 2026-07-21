@@ -1,5 +1,5 @@
 /* ================================================================
-   APPLICATION LOGIC — KASIR KANTIN
+   APPLICATION LOGIC — KASIR KANTIN (v2 with Expenses & Profit/Loss)
    ================================================================ */
 
 /* ---------------- Configuration ---------------- */
@@ -12,9 +12,11 @@ const CONFIG = {
 const DEMO = !CONFIG.API_URL;
 let MENU = [];
 let ORDERS = [];
+let EXPENSES = [];
 let cart = {}; // { nama: { nama, harga, qty } }
 let payStatus = "Lunas";
-let pemRange = "today";
+let keuRange = "today";
+let expRange = "today";
 let activeCategory = "Semua";
 let currentView = "kasir";
 let lastSubmittedOrder = null;
@@ -40,6 +42,30 @@ const MENU_SEED = [
   { nama: "yupi gummy", harga: 500, kategori: "Snack" },
   { nama: "air es", harga: 1000, kategori: "Minuman" },
 ];
+
+const EXPENSE_SEED = [
+  { id: "EXP1", waktu: new Date().toISOString(), keterangan: "Beli Air Galon & Es Batu", kategori: "Operasional", jumlah: 15000 },
+  { id: "EXP2", waktu: new Date().toISOString(), keterangan: "Restok Teajus & Nutrisari", kategori: "Modal Barang", jumlah: 45000 }
+];
+
+/* ---------------- LocalStorage Helpers ---------------- */
+const LS = {
+  get: (k, def) => {
+    try {
+      const item = localStorage.getItem(k);
+      return item ? JSON.parse(item) : def;
+    } catch {
+      return def;
+    }
+  },
+  set: (k, v) => {
+    try {
+      localStorage.setItem(k, JSON.stringify(v));
+    } catch (e) {
+      console.error("LS save error", e);
+    }
+  }
+};
 
 /* ---------------- DOM Helpers & Utilities ---------------- */
 const $ = s => document.querySelector(s);
@@ -110,49 +136,40 @@ async function apiPost(payload) {
   return j.data;
 }
 
-function lsOrders() {
+async function loadData() {
+  if (DEMO) {
+    if (!localStorage.getItem("kasir_menu")) LS.set("kasir_menu", MENU_SEED);
+    if (!localStorage.getItem("kasir_expenses")) LS.set("kasir_expenses", EXPENSE_SEED);
+    
+    MENU = LS.get("kasir_menu", MENU_SEED);
+    ORDERS = LS.get("kasir_orders", []);
+    EXPENSES = LS.get("kasir_expenses", []);
+    return;
+  }
+  
   try {
-    return JSON.parse(localStorage.getItem("kasir_orders") || "[]");
+    const all = await apiGet("getAll");
+    MENU = all.menu || [];
+    ORDERS = all.orders || [];
+    EXPENSES = all.expenses || [];
   } catch (e) {
-    return [];
+    console.warn("Fallback to individual gets", e);
+    MENU = await apiGet("getMenu");
+    ORDERS = await apiGet("getOrders");
+    EXPENSES = await apiGet("getExpenses");
   }
-}
-
-function lsSave(o) {
-  localStorage.setItem("kasir_orders", JSON.stringify(o));
-}
-
-async function loadMenu() {
-  if (DEMO) {
-    MENU = MENU_SEED.slice();
-    return;
-  }
-  const data = await apiGet("getMenu");
-  // ensure category field exists
-  MENU = data.map(m => ({
-    ...m,
-    kategori: m.kategori || (getMenuEmoji(m.nama) === "🧃" || getMenuEmoji(m.nama) === "🥛" || getMenuEmoji(m.nama) === "☕" || getMenuEmoji(m.nama) === "🧊" ? "Minuman" : "Snack")
-  }));
-}
-
-async function loadOrders() {
-  if (DEMO) {
-    ORDERS = lsOrders();
-    return;
-  }
-  ORDERS = await apiGet("getOrders");
 }
 
 async function saveOrder(order) {
   if (DEMO) {
-    const o = lsOrders();
+    const o = LS.get("kasir_orders", []);
     const newTrx = {
       ...order,
       id: "TRX" + Date.now(),
       waktu: new Date().toISOString()
     };
     o.push(newTrx);
-    lsSave(o);
+    LS.set("kasir_orders", o);
     return newTrx;
   }
   const result = await apiPost({
@@ -166,11 +183,42 @@ async function saveOrder(order) {
 
 async function setPaid(id) {
   if (DEMO) {
-    const o = lsOrders().map(x => x.id === id ? { ...x, status: "Lunas" } : x);
-    lsSave(o);
+    const o = LS.get("kasir_orders", []).map(x => x.id === id ? { ...x, status: "Lunas" } : x);
+    LS.set("kasir_orders", o);
     return;
   }
   await apiPost({ action: "markPaid", id: id });
+}
+
+async function saveExpense(keterangan, kategori, jumlah) {
+  if (DEMO) {
+    const exp = LS.get("kasir_expenses", []);
+    const newExp = {
+      id: "EXP" + Date.now(),
+      waktu: new Date().toISOString(),
+      keterangan,
+      kategori,
+      jumlah: Number(jumlah) || 0
+    };
+    exp.push(newExp);
+    LS.set("kasir_expenses", exp);
+    return newExp;
+  }
+  return await apiPost({
+    action: "addExpense",
+    keterangan,
+    kategori,
+    jumlah: Number(jumlah) || 0
+  });
+}
+
+async function deleteExpenseItem(id) {
+  if (DEMO) {
+    const exp = LS.get("kasir_expenses", []).filter(x => x.id !== id);
+    LS.set("kasir_expenses", exp);
+    return;
+  }
+  await apiPost({ action: "deleteExpense", id: id });
 }
 
 /* ---------------- Render: Skeleton Loader ---------------- */
@@ -273,7 +321,7 @@ function flashCartBadge() {
   badges.forEach(b => {
     if (b) {
       b.classList.remove("pop");
-      void b.offsetWidth; // trigger reflow
+      void b.offsetWidth;
       b.classList.add("pop");
     }
   });
@@ -284,9 +332,7 @@ function renderCart() {
   const totalCount = items.reduce((s, i) => s + i.qty, 0);
   const totalAmt = cartTotal();
 
-  // Desktop badge counters
   if ($("#cartCount")) $("#cartCount").textContent = totalCount;
-  if ($("#cartBadgeDesktop")) $("#cartBadgeDesktop").textContent = totalCount;
 
   // Mobile FAB update
   const fab = $("#fabCart");
@@ -301,7 +347,7 @@ function renderCart() {
     }
   }
 
-  // Build Cart HTML content for both desktop panel and mobile sheet
+  // Cart HTML renderer
   const buildCartHTML = (isSheet = false) => {
     if (!items.length) {
       return '<div class="cart-empty">🛒 Belum ada item.<br>Klik menu untuk menambah pesanan.</div>';
@@ -352,14 +398,12 @@ function renderCart() {
     return h;
   };
 
-  // Render to desktop cart body
   const desktopBody = $("#cartBodyDesktop");
   if (desktopBody) {
     desktopBody.innerHTML = buildCartHTML(false);
     bindCartEvents(desktopBody, false);
   }
 
-  // Render to sheet cart body
   const sheetBody = $("#cartBodySheet");
   if (sheetBody) {
     sheetBody.innerHTML = buildCartHTML(true);
@@ -427,13 +471,12 @@ async function submitOrder(isSheet = false) {
   const pelanggan = (nameInput ? nameInput.value : "").trim();
 
   try {
-    const saved = await saveOrder({
+    await saveOrder({
       pelanggan,
       status: payStatus,
       items: items.map(i => ({ nama: i.nama, harga: i.harga, qty: i.qty }))
     });
 
-    // Save for receipt modal display
     lastSubmittedOrder = {
       pelanggan: pelanggan || "Pelanggan Umum",
       status: payStatus,
@@ -447,7 +490,7 @@ async function submitOrder(isSheet = false) {
     closeCartSheet();
     renderCart();
 
-    await loadOrders();
+    await loadData();
     refreshAll();
     showReceiptModal(lastSubmittedOrder);
     toast("Pesanan berhasil disimpan ✓", "success");
@@ -487,37 +530,64 @@ function closeReceiptModal() {
   }
 }
 
-/* ---------------- Pemasukan Dashboard & SVG Chart ---------------- */
+/* ---------------- Keuangan (Pemasukan, Pengeluaran, & Laba/Rugi) ---------------- */
 function filteredOrders() {
-  return pemRange === "today"
+  return keuRange === "today"
     ? ORDERS.filter(o => isToday(o.waktu))
     : ORDERS.slice();
 }
 
-function renderPemasukan() {
-  const list = filteredOrders();
-  const lunas = list.filter(o => o.status === "Lunas");
-  const belum = list.filter(o => o.status !== "Lunas");
-  const totalLunas = lunas.reduce((s, o) => s + (o.total || 0), 0);
-  const totalBelum = belum.reduce((s, o) => s + (o.total || 0), 0);
-  const itemQty = list.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + i.qty, 0), 0);
+function filteredExpenses() {
+  return expRange === "today"
+    ? EXPENSES.filter(e => isToday(e.waktu))
+    : EXPENSES.slice();
+}
 
-  const grid = $("#statGrid");
-  if (grid) {
-    grid.innerHTML = `
-      ${statCard("Pemasukan (Lunas)", rp(totalLunas), "green", "g", "💰")}
+function renderKeuangan() {
+  const ordersList = filteredOrders();
+  const expList = keuRange === "today"
+    ? EXPENSES.filter(e => isToday(e.waktu))
+    : EXPENSES.slice();
+
+  const lunasOrders = ordersList.filter(o => o.status === "Lunas");
+  const belumOrders = ordersList.filter(o => o.status !== "Lunas");
+
+  const totalPemasukanLunas = lunasOrders.reduce((s, o) => s + (o.total || 0), 0);
+  const totalBelum = belumOrders.reduce((s, o) => s + (o.total || 0), 0);
+  const totalPengeluaran = expList.reduce((s, e) => s + (Number(e.jumlah) || 0), 0);
+  
+  // Laba / Rugi = Pemasukan (Lunas) - Total Pengeluaran
+  const labaRugi = totalPemasukanLunas - totalPengeluaran;
+
+  const itemQty = ordersList.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + i.qty, 0), 0);
+
+  // Render Top Financial Cards (Pemasukan, Pengeluaran, Laba/Rugi)
+  const heroGrid = $("#keuHeroGrid");
+  if (heroGrid) {
+    const isProfit = labaRugi >= 0;
+    heroGrid.innerHTML = `
+      ${statCard("Pemasukan (Lunas)", rp(totalPemasukanLunas), "green", "g", "💰")}
+      ${statCard("Total Pengeluaran", rp(totalPengeluaran), "red", "r", "💸")}
+      ${statCard("Laba / Rugi", rp(labaRugi), isProfit ? "green" : "red", isProfit ? "g" : "r", isProfit ? "📈" : "📉")}
+    `;
+  }
+
+  // Render Activity Cards (Belum Dibayar, Jumlah Pesanan, Item Terjual)
+  const actGrid = $("#keuActGrid");
+  if (actGrid) {
+    actGrid.innerHTML = `
       ${statCard("Belum Dibayar", rp(totalBelum), "orange", "o", "⏳")}
-      ${statCard("Jumlah Pesanan", list.length, "", "b", "🧾")}
+      ${statCard("Jumlah Pesanan", ordersList.length, "", "b", "🧾")}
       ${statCard("Item Terjual", itemQty, "", "p", "📦")}
     `;
   }
 
-  // Render pure SVG bar chart
-  renderSalesChart(list);
+  // Render Sales Chart
+  renderSalesChart(ordersList);
 
-  // Top products with progress bars
+  // Top Products Progress Bars
   const map = {};
-  list.forEach(o => {
+  ordersList.forEach(o => {
     (o.items || []).forEach(i => {
       if (!map[i.nama]) map[i.nama] = { qty: 0, sub: 0 };
       map[i.nama].qty += i.qty;
@@ -567,9 +637,8 @@ function renderSalesChart(orders) {
   const container = $("#salesChart");
   if (!container) return;
 
-  // Group sales by time slots (for today: 4-hour slots or hourly; for all: by date)
   const slots = {};
-  if (pemRange === "today") {
+  if (keuRange === "today") {
     for (let h = 8; h <= 20; h += 2) {
       const key = `${String(h).padStart(2, '0')}:00`;
       slots[key] = 0;
@@ -583,7 +652,6 @@ function renderSalesChart(orders) {
       }
     });
   } else {
-    // Group by last 7 dates
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
@@ -633,6 +701,111 @@ function renderSalesChart(orders) {
   container.innerHTML = svgContent;
 }
 
+/* ---------------- Pengeluaran View (BARU) ---------------- */
+function renderPengeluaran() {
+  const list = filteredExpenses().sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
+  const totalExp = list.reduce((s, e) => s + (Number(e.jumlah) || 0), 0);
+
+  if ($("#expTotalVal")) $("#expTotalVal").textContent = rp(totalExp);
+
+  const tb = $("#expBody");
+  const mobileContainer = $("#expMobileCards");
+
+  if (!list.length) {
+    if (tb) tb.innerHTML = '<tr><td colspan="5" class="empty">💸 Belum ada data pengeluaran.</td></tr>';
+    if (mobileContainer) mobileContainer.innerHTML = '<div class="empty">💸 Belum ada data pengeluaran.</div>';
+    return;
+  }
+
+  // Category Tag Helper
+  const expTag = cat => `<span class="tag-cat ${cat ? cat.toLowerCase().replace(/\s+/g, '-') : 'lainnya'}">${cat || 'Lainnya'}</span>`;
+
+  // Desktop Table HTML
+  if (tb) {
+    tb.innerHTML = list.map(e => `
+      <tr>
+        <td>${fmtTime(e.waktu)}</td>
+        <td><strong>${e.keterangan || "-"}</strong></td>
+        <td>${expTag(e.kategori)}</td>
+        <td class="num">${rp(e.jumlah)}</td>
+        <td style="text-align:right;">
+          <button class="btn-danger-sm" data-exp-id="${e.id}" aria-label="Hapus pengeluaran">Hapus</button>
+        </td>
+      </tr>
+    `).join("");
+  }
+
+  // Mobile Cards HTML
+  if (mobileContainer) {
+    mobileContainer.innerHTML = list.map(e => `
+      <div class="trx-card">
+        <div class="trx-card-head">
+          <span>${fmtTime(e.waktu)}</span>
+          ${expTag(e.kategori)}
+        </div>
+        <div class="trx-card-cust">${e.keterangan || "-"}</div>
+        <div class="trx-card-foot">
+          <span class="trx-card-total red">${rp(e.jumlah)}</span>
+          <button class="btn-danger-sm" data-exp-id="${e.id}">Hapus</button>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  // Bind Delete buttons
+  $$(".btn-danger-sm[data-exp-id]").forEach(b => {
+    b.onclick = async () => {
+      if (!confirm("Yakin ingin menghapus pengeluaran ini?")) return;
+      b.disabled = true;
+      b.textContent = "...";
+      try {
+        await deleteExpenseItem(b.dataset.expId);
+        await loadData();
+        refreshAll();
+        toast("Pengeluaran berhasil dihapus ✓", "success");
+      } catch (err) {
+        toast("Gagal menghapus: " + err.message, "error");
+        b.disabled = false;
+        b.textContent = "Hapus";
+      }
+    };
+  });
+}
+
+async function handleAddExpense(e) {
+  e.preventDefault();
+  const ketInput = $("#expKet");
+  const katInput = $("#expKat");
+  const jmlInput = $("#expJml");
+  const submitBtn = $("#expSubmit");
+
+  const keterangan = (ketInput ? ketInput.value : "").trim();
+  const kategori = katInput ? katInput.value : "Lainnya";
+  const jumlah = Number(jmlInput ? jmlInput.value : 0);
+
+  if (!keterangan || jumlah <= 0) {
+    toast("Isi keterangan dan jumlah pengeluaran dengan benar", "error");
+    return;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Menyimpan...";
+
+  try {
+    await saveExpense(keterangan, kategori, jumlah);
+    if (ketInput) ketInput.value = "";
+    if (jmlInput) jmlInput.value = "";
+    await loadData();
+    refreshAll();
+    toast("Pengeluaran berhasil ditambahkan ✓", "success");
+  } catch (err) {
+    toast("Gagal menyimpan pengeluaran: " + err.message, "error");
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Tambah Pengeluaran";
+  }
+}
+
 /* ---------------- Histori & Belum Bayar ---------------- */
 function tag(s) {
   return s === "Lunas"
@@ -660,7 +833,6 @@ function renderHistori() {
     return;
   }
 
-  // Desktop Table HTML
   if (tb) {
     tb.innerHTML = list.map(o => {
       const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
@@ -676,7 +848,6 @@ function renderHistori() {
     }).join("");
   }
 
-  // Mobile Cards HTML
   if (mobileContainer) {
     mobileContainer.innerHTML = list.map(o => {
       const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
@@ -702,7 +873,6 @@ function renderBelum() {
   const list = ORDERS.filter(o => o.status !== "Lunas")
     .sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
 
-  // Update badge counters across UI
   const count = list.length;
   $$(".nav-badge-belum").forEach(b => {
     b.textContent = count;
@@ -718,7 +888,6 @@ function renderBelum() {
     return;
   }
 
-  // Desktop Table HTML
   if (tb) {
     tb.innerHTML = list.map(o => {
       const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
@@ -736,7 +905,6 @@ function renderBelum() {
     }).join("");
   }
 
-  // Mobile Cards HTML
   if (mobileContainer) {
     mobileContainer.innerHTML = list.map(o => {
       const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
@@ -757,14 +925,13 @@ function renderBelum() {
     }).join("");
   }
 
-  // Bind mark paid events
   $$(".btn-sm[data-id]").forEach(b => {
     b.onclick = async () => {
       b.disabled = true;
       b.textContent = "Processing...";
       try {
         await setPaid(b.dataset.id);
-        await loadOrders();
+        await loadData();
         refreshAll();
         toast("Status berhasil diubah ke Lunas ✓", "success");
       } catch (e) {
@@ -776,9 +943,10 @@ function renderBelum() {
   });
 }
 
-/* ---------------- Navigation & View Controller ---------------- */
+/* ---------------- Navigation & Refresh Controller ---------------- */
 function refreshAll() {
-  renderPemasukan();
+  renderKeuangan();
+  renderPengeluaran();
   renderHistori();
   renderBelum();
 }
@@ -795,7 +963,6 @@ function switchView(v) {
 
 /* ---------------- Initialization ---------------- */
 async function init() {
-  // Brand & Connection status setup
   if ($("#brandName")) $("#brandName").textContent = CONFIG.STORE_NAME;
   const badge = $("#connBadge");
   const badgeText = $("#connText");
@@ -804,12 +971,10 @@ async function init() {
     badgeText.textContent = "Terhubung ke Sheet";
   }
 
-  // Setup View Switching
   $$("nav.desktop-nav button, .bottom-nav button").forEach(b => {
     b.onclick = () => switchView(b.dataset.view);
   });
 
-  // Setup Search inputs with debounce
   let searchTimer;
   const menuSearch = $("#menuSearch");
   if (menuSearch) {
@@ -827,16 +992,30 @@ async function init() {
     };
   }
 
-  // Setup Pemasukan Filters
-  $$("#pemFilter .chip").forEach(c => {
+  // Setup Keuangan Filter
+  $$("#keuFilter .chip").forEach(c => {
     c.onclick = () => {
-      pemRange = c.dataset.range;
-      $$("#pemFilter .chip").forEach(x => x.classList.toggle("active", x === c));
-      renderPemasukan();
+      keuRange = c.dataset.range;
+      $$("#keuFilter .chip").forEach(x => x.classList.toggle("active", x === c));
+      renderKeuangan();
     };
   });
 
-  // Mobile Bottom-Sheet & FAB Cart Triggers
+  // Setup Pengeluaran Filter
+  $$("#expFilter .chip").forEach(c => {
+    c.onclick = () => {
+      expRange = c.dataset.range;
+      $$("#expFilter .chip").forEach(x => x.classList.toggle("active", x === c));
+      renderPengeluaran();
+    };
+  });
+
+  // Form submit event for Expense
+  const expForm = $("#expForm");
+  if (expForm) {
+    expForm.onsubmit = handleAddExpense;
+  }
+
   const fabCart = $("#fabCart");
   if (fabCart) {
     fabCart.onclick = openCartSheet;
@@ -846,7 +1025,6 @@ async function init() {
     sheetBackdrop.onclick = closeCartSheet;
   }
 
-  // Modal Receipt Close Trigger
   const receiptNew = $("#receiptNew");
   if (receiptNew) {
     receiptNew.onclick = closeReceiptModal;
@@ -858,22 +1036,18 @@ async function init() {
     };
   }
 
-  // Show Skeleton while fetching initial data
   showMenuSkeleton(8);
   renderCategories();
 
   try {
-    await loadMenu();
-    await loadOrders();
+    await loadData();
   } catch (e) {
     toast("Gagal memuat data: " + e.message, "error");
   }
 
-  // Initial render
   renderMenu();
   renderCart();
   refreshAll();
 }
 
-// Start application when DOM is fully loaded
 document.addEventListener("DOMContentLoaded", init);

@@ -1,6 +1,103 @@
 /* ================================================================
    DESIGN SYSTEM TOKENS & STYLES — KASIR KANTIN
    ================================================================ */
+
+/* Category Tags for Expenses */
+.tag-cat {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  display: inline-block;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.tag-cat.modal-barang {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.tag-cat.operasional {
+  background: var(--orange-soft);
+  color: var(--orange);
+}
+
+.tag-cat.transport {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.tag-cat.lainnya {
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+/* Form Styles */
+.form-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: 12px;
+  align-items: end;
+  padding: 20px;
+}
+
+@media (max-width: 768px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+  transition: border-color .15s var(--ease);
+  min-height: 44px;
+}
+
+.form-group input:focus, .form-group select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.btn-danger-sm {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--red-soft);
+  background: var(--red-soft);
+  color: var(--red);
+  font-weight: 700;
+  font-size: 13px;
+  transition: all .15s var(--ease);
+  min-height: 36px;
+}
+
+.btn-danger-sm:hover {
+  background: var(--red);
+  color: #fff;
+}
+
+.trx-card-total.red {
+  color: var(--red);
+}
+
 :root {
   /* Colors - Light Theme */
   --bg: #F7F7F5;
@@ -853,6 +950,10 @@ main {
   background: var(--green-soft);
 }
 
+.stat-ico.r {
+  background: var(--red-soft);
+}
+
 .stat-ico.o {
   background: var(--orange-soft);
 }
@@ -880,6 +981,10 @@ main {
 
 .stat-value.green {
   color: var(--green);
+}
+
+.stat-value.red {
+  color: var(--red);
 }
 
 .stat-value.orange {
