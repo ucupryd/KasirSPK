@@ -1,0 +1,879 @@
+/* ================================================================
+   APPLICATION LOGIC — KASIR KANTIN
+   ================================================================ */
+
+/* ---------------- Configuration ---------------- */
+const CONFIG = {
+  API_URL: "https://script.google.com/macros/s/AKfycbzinsDZr9ija9EQaCoyz-r41QpuPyjNW7bVp8-nwuib_UeEdVUv0hJvi_Hbv4bjMs1N/exec", // URL Apps Script
+  STORE_NAME: "Kasir Kantin",
+};
+
+/* ---------------- State ---------------- */
+const DEMO = !CONFIG.API_URL;
+let MENU = [];
+let ORDERS = [];
+let cart = {}; // { nama: { nama, harga, qty } }
+let payStatus = "Lunas";
+let pemRange = "today";
+let activeCategory = "Semua";
+let currentView = "kasir";
+let lastSubmittedOrder = null;
+
+const MENU_SEED = [
+  { nama: "Sarimi Gelas", harga: 3000, kategori: "Makanan" },
+  { nama: "Teajus", harga: 2000, kategori: "Minuman" },
+  { nama: "Jasjus", harga: 1000, kategori: "Minuman" },
+  { nama: "Nutrisari", harga: 3000, kategori: "Minuman" },
+  { nama: "Susu putih", harga: 5000, kategori: "Minuman" },
+  { nama: "Susu coklat", harga: 5000, kategori: "Minuman" },
+  { nama: "Good day", harga: 5000, kategori: "Minuman" },
+  { nama: "Top coffee", harga: 5000, kategori: "Minuman" },
+  { nama: "Bengbeng", harga: 5000, kategori: "Snack" },
+  { nama: "yupi love", harga: 1000, kategori: "Snack" },
+  { nama: "basreng", harga: 500, kategori: "Snack" },
+  { nama: "makaroni", harga: 2000, kategori: "Snack" },
+  { nama: "taro", harga: 1000, kategori: "Snack" },
+  { nama: "suki", harga: 1000, kategori: "Makanan" },
+  { nama: "garuda rosta", harga: 1000, kategori: "Snack" },
+  { nama: "golden chips", harga: 1000, kategori: "Snack" },
+  { nama: "riry", harga: 500, kategori: "Snack" },
+  { nama: "yupi gummy", harga: 500, kategori: "Snack" },
+  { nama: "air es", harga: 1000, kategori: "Minuman" },
+];
+
+/* ---------------- DOM Helpers & Utilities ---------------- */
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+const rp = n => "Rp\u00a0" + (Number(n) || 0).toLocaleString("id-ID");
+
+function toast(msg, type = "success") {
+  const t = $("#toast");
+  if (!t) return;
+  t.textContent = msg;
+  t.className = "show " + type;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => {
+    t.className = "";
+  }, 2200);
+}
+
+function isToday(iso) {
+  if (!iso) return false;
+  const d = new Date(iso), n = new Date();
+  return d.getFullYear() === n.getFullYear() &&
+         d.getMonth() === n.getMonth() &&
+         d.getDate() === n.getDate();
+}
+
+function fmtTime(iso) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  return d.toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function getMenuEmoji(nama = "", kategori = "") {
+  const lower = nama.toLowerCase();
+  if (kategori === "Minuman" || lower.includes("jus") || lower.includes("susu") || lower.includes("tea") || lower.includes("coffee") || lower.includes("es") || lower.includes("air") || lower.includes("nutri")) {
+    if (lower.includes("susu")) return "🥛";
+    if (lower.includes("coffee") || lower.includes("kopi") || lower.includes("day") || lower.includes("top")) return "☕";
+    if (lower.includes("es") || lower.includes("air")) return "🧊";
+    return "🧃";
+  }
+  if (lower.includes("sarimi") || lower.includes("mie") || lower.includes("suki")) return "🍜";
+  if (lower.includes("chips") || lower.includes("taro") || lower.includes("rosta") || lower.includes("basreng") || lower.includes("makaroni")) return "🍿";
+  if (lower.includes("bengbeng") || lower.includes("yupi") || lower.includes("riry")) return "🍬";
+  return "🍱";
+}
+
+/* ---------------- Data Layer (API & LocalStorage) ---------------- */
+async function apiGet(action) {
+  const r = await fetch(CONFIG.API_URL + "?action=" + action);
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "Gagal mengambil data");
+  return j.data;
+}
+
+async function apiPost(payload) {
+  const r = await fetch(CONFIG.API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload)
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "Gagal menyimpan data");
+  return j.data;
+}
+
+function lsOrders() {
+  try {
+    return JSON.parse(localStorage.getItem("kasir_orders") || "[]");
+  } catch (e) {
+    return [];
+  }
+}
+
+function lsSave(o) {
+  localStorage.setItem("kasir_orders", JSON.stringify(o));
+}
+
+async function loadMenu() {
+  if (DEMO) {
+    MENU = MENU_SEED.slice();
+    return;
+  }
+  const data = await apiGet("getMenu");
+  // ensure category field exists
+  MENU = data.map(m => ({
+    ...m,
+    kategori: m.kategori || (getMenuEmoji(m.nama) === "🧃" || getMenuEmoji(m.nama) === "🥛" || getMenuEmoji(m.nama) === "☕" || getMenuEmoji(m.nama) === "🧊" ? "Minuman" : "Snack")
+  }));
+}
+
+async function loadOrders() {
+  if (DEMO) {
+    ORDERS = lsOrders();
+    return;
+  }
+  ORDERS = await apiGet("getOrders");
+}
+
+async function saveOrder(order) {
+  if (DEMO) {
+    const o = lsOrders();
+    const newTrx = {
+      ...order,
+      id: "TRX" + Date.now(),
+      waktu: new Date().toISOString()
+    };
+    o.push(newTrx);
+    lsSave(o);
+    return newTrx;
+  }
+  const result = await apiPost({
+    action: "addOrder",
+    pelanggan: order.pelanggan,
+    status: order.status,
+    items: order.items
+  });
+  return result;
+}
+
+async function setPaid(id) {
+  if (DEMO) {
+    const o = lsOrders().map(x => x.id === id ? { ...x, status: "Lunas" } : x);
+    lsSave(o);
+    return;
+  }
+  await apiPost({ action: "markPaid", id: id });
+}
+
+/* ---------------- Render: Skeleton Loader ---------------- */
+function showMenuSkeleton(n = 8) {
+  const grid = $("#menuGrid");
+  if (!grid) return;
+  grid.innerHTML = Array.from({ length: n })
+    .map(() => '<div class="skeleton skeleton-card"></div>')
+    .join("");
+}
+
+/* ---------------- Render: Menu & Categories ---------------- */
+function renderCategories() {
+  const container = $("#categoryChips");
+  if (!container) return;
+
+  const categories = ["Semua", "Minuman", "Makanan", "Snack"];
+  container.innerHTML = categories.map(cat => `
+    <button class="chip ${activeCategory === cat ? 'active' : ''}" data-cat="${cat}">
+      ${cat === 'Semua' ? '✨ Semua' : cat === 'Minuman' ? '🧃 Minuman' : cat === 'Makanan' ? '🍲 Makanan' : '🍿 Snack'}
+    </button>
+  `).join("");
+
+  container.querySelectorAll(".chip").forEach(btn => {
+    btn.onclick = () => {
+      activeCategory = btn.dataset.cat;
+      renderCategories();
+      renderMenu();
+    };
+  });
+}
+
+function renderMenu() {
+  const searchInput = $("#menuSearch");
+  const q = (searchInput ? searchInput.value : "").toLowerCase().trim();
+  const grid = $("#menuGrid");
+  if (!grid) return;
+
+  grid.innerHTML = "";
+
+  const list = MENU.filter(m => {
+    const matchQuery = m.nama.toLowerCase().includes(q);
+    const emoji = getMenuEmoji(m.nama, m.kategori);
+    const cat = m.kategori || (emoji === "🧃" || emoji === "🥛" || emoji === "☕" || emoji === "🧊" ? "Minuman" : "Snack");
+    const matchCat = (activeCategory === "Semua") || (cat.toLowerCase() === activeCategory.toLowerCase());
+    return matchQuery && matchCat;
+  });
+
+  if (!list.length) {
+    grid.innerHTML = '<div class="empty" style="grid-column: 1/-1;">🔍 Menu tidak ditemukan.</div>';
+    return;
+  }
+
+  list.forEach(m => {
+    const emoji = getMenuEmoji(m.nama, m.kategori);
+    const btn = document.createElement("button");
+    btn.className = "menu-card";
+    btn.setAttribute("aria-label", `Tambah ${m.nama} ${rp(m.harga)}`);
+    btn.innerHTML = `
+      <span class="menu-emoji">${emoji}</span>
+      <span class="menu-name">${m.nama}</span>
+      <span class="menu-price">${rp(m.harga)}</span>
+    `;
+    btn.onclick = () => {
+      addToCart(m);
+      flashCartBadge();
+    };
+    grid.appendChild(btn);
+  });
+}
+
+/* ---------------- Cart Logic & Mobile Sheet ---------------- */
+function addToCart(m) {
+  if (!cart[m.nama]) {
+    cart[m.nama] = { nama: m.nama, harga: m.harga, qty: 0 };
+  }
+  cart[m.nama].qty++;
+  renderCart();
+}
+
+function changeQty(nama, d) {
+  if (!cart[nama]) return;
+  cart[nama].qty += d;
+  if (cart[nama].qty <= 0) {
+    delete cart[nama];
+  }
+  renderCart();
+}
+
+function cartItems() {
+  return Object.values(cart);
+}
+
+function cartTotal() {
+  return cartItems().reduce((s, i) => s + i.harga * i.qty, 0);
+}
+
+function flashCartBadge() {
+  const badges = [$("#cartBadgeDesktop"), $("#cartBadgeMobile"), $("#fabCount")];
+  badges.forEach(b => {
+    if (b) {
+      b.classList.remove("pop");
+      void b.offsetWidth; // trigger reflow
+      b.classList.add("pop");
+    }
+  });
+}
+
+function renderCart() {
+  const items = cartItems();
+  const totalCount = items.reduce((s, i) => s + i.qty, 0);
+  const totalAmt = cartTotal();
+
+  // Desktop badge counters
+  if ($("#cartCount")) $("#cartCount").textContent = totalCount;
+  if ($("#cartBadgeDesktop")) $("#cartBadgeDesktop").textContent = totalCount;
+
+  // Mobile FAB update
+  const fab = $("#fabCart");
+  if (fab) {
+    if (totalCount > 0) {
+      fab.style.display = "flex";
+      $("#fabCount").textContent = totalCount;
+      $("#fabTotal").textContent = rp(totalAmt);
+    } else {
+      fab.style.display = "none";
+      closeCartSheet();
+    }
+  }
+
+  // Build Cart HTML content for both desktop panel and mobile sheet
+  const buildCartHTML = (isSheet = false) => {
+    if (!items.length) {
+      return '<div class="cart-empty">🛒 Belum ada item.<br>Klik menu untuk menambah pesanan.</div>';
+    }
+
+    let h = '<div class="cart-list">';
+    items.forEach(i => {
+      h += `
+        <div class="ci">
+          <div class="cinm">${i.nama}<small>${rp(i.harga)}</small></div>
+          <div class="stepper">
+            <button data-m="${i.nama}" data-d="-1" aria-label="Kurangi ${i.nama}">−</button>
+            <span>${i.qty}</span>
+            <button data-m="${i.nama}" data-d="1" aria-label="Tambah ${i.nama}">+</button>
+          </div>
+        </div>
+      `;
+    });
+    h += '</div>';
+
+    h += `
+      <div class="total-row">
+        <span class="lbl">Total</span>
+        <span class="amt">${rp(totalAmt)}</span>
+      </div>
+    `;
+
+    const inputId = isSheet ? "custNameSheet" : "custNameDesktop";
+    const custVal = ($(`#${inputId}`) ? $(`#${inputId}`).value : ($("#custNameDesktop") ? $("#custNameDesktop").value : ""));
+
+    h += `
+      <div class="field">
+        <label for="${inputId}">Nama pelanggan (opsional)</label>
+        <input id="${inputId}" placeholder="cth: Meja 3 / Andi" value="${custVal}"/>
+      </div>
+    `;
+
+    h += `
+      <div class="segmented" role="tablist">
+        <button class="seg ${payStatus === 'Lunas' ? 'on' : ''}" data-s="Lunas" role="tab" aria-selected="${payStatus === 'Lunas'}">✅ Lunas</button>
+        <button class="seg ${payStatus === 'Belum Bayar' ? 'on' : ''}" data-s="Belum Bayar" role="tab" aria-selected="${payStatus === 'Belum Bayar'}">⏳ Belum Bayar</button>
+      </div>
+    `;
+
+    h += `<button class="btn-primary cart-save-btn" id="${isSheet ? 'saveBtnSheet' : 'saveBtnDesktop'}">Simpan Pesanan · ${rp(totalAmt)}</button>`;
+    h += `<button class="btn-ghost cart-clear-btn">Kosongkan Keranjang</button>`;
+
+    return h;
+  };
+
+  // Render to desktop cart body
+  const desktopBody = $("#cartBodyDesktop");
+  if (desktopBody) {
+    desktopBody.innerHTML = buildCartHTML(false);
+    bindCartEvents(desktopBody, false);
+  }
+
+  // Render to sheet cart body
+  const sheetBody = $("#cartBodySheet");
+  if (sheetBody) {
+    sheetBody.innerHTML = buildCartHTML(true);
+    bindCartEvents(sheetBody, true);
+  }
+}
+
+function bindCartEvents(container, isSheet) {
+  container.querySelectorAll(".stepper button").forEach(b => {
+    b.onclick = () => changeQty(b.dataset.m, Number(b.dataset.d));
+  });
+
+  container.querySelectorAll(".segmented button").forEach(b => {
+    b.onclick = () => {
+      payStatus = b.dataset.s;
+      renderCart();
+    };
+  });
+
+  const saveBtn = container.querySelector(".cart-save-btn");
+  if (saveBtn) {
+    saveBtn.onclick = () => submitOrder(isSheet);
+  }
+
+  const clearBtn = container.querySelector(".cart-clear-btn");
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      if (confirm("Kosongkan keranjang pesanan?")) {
+        cart = {};
+        renderCart();
+      }
+    };
+  }
+}
+
+function openCartSheet() {
+  const sheet = $("#cartSheet");
+  const backdrop = $("#sheetBackdrop");
+  if (sheet && backdrop) {
+    sheet.classList.add("open");
+    backdrop.classList.add("open");
+  }
+}
+
+function closeCartSheet() {
+  const sheet = $("#cartSheet");
+  const backdrop = $("#sheetBackdrop");
+  if (sheet && backdrop) {
+    sheet.classList.remove("open");
+    backdrop.classList.remove("open");
+  }
+}
+
+async function submitOrder(isSheet = false) {
+  const items = cartItems();
+  if (!items.length) return;
+
+  const btn = isSheet ? $("#saveBtnSheet") : $("#saveBtnDesktop");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Menyimpan...";
+  }
+
+  const nameInput = isSheet ? $("#custNameSheet") : $("#custNameDesktop");
+  const pelanggan = (nameInput ? nameInput.value : "").trim();
+
+  try {
+    const saved = await saveOrder({
+      pelanggan,
+      status: payStatus,
+      items: items.map(i => ({ nama: i.nama, harga: i.harga, qty: i.qty }))
+    });
+
+    // Save for receipt modal display
+    lastSubmittedOrder = {
+      pelanggan: pelanggan || "Pelanggan Umum",
+      status: payStatus,
+      items: items.slice(),
+      total: cartTotal(),
+      waktu: new Date().toISOString()
+    };
+
+    cart = {};
+    payStatus = "Lunas";
+    closeCartSheet();
+    renderCart();
+
+    await loadOrders();
+    refreshAll();
+    showReceiptModal(lastSubmittedOrder);
+    toast("Pesanan berhasil disimpan ✓", "success");
+  } catch (e) {
+    toast("Gagal: " + e.message, "error");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = `Simpan Pesanan · ${rp(cartTotal())}`;
+    }
+  }
+}
+
+/* ---------------- Receipt Modal ---------------- */
+function showReceiptModal(order) {
+  const modalBackdrop = $("#receiptBackdrop");
+  if (!modalBackdrop || !order) return;
+
+  $("#receiptCust").textContent = order.pelanggan || "Pelanggan Umum";
+  $("#receiptStatusTag").innerHTML = tag(order.status);
+  $("#receiptTotal").textContent = rp(order.total);
+
+  const itemsContainer = $("#receiptItems");
+  itemsContainer.innerHTML = order.items.map(i => `
+    <div class="receipt-item">
+      <span class="receipt-item-name">${i.qty}x ${i.nama}</span>
+      <span class="receipt-item-price">${rp(i.harga * i.qty)}</span>
+    </div>
+  `).join("");
+
+  modalBackdrop.classList.add("open");
+}
+
+function closeReceiptModal() {
+  const modalBackdrop = $("#receiptBackdrop");
+  if (modalBackdrop) {
+    modalBackdrop.classList.remove("open");
+  }
+}
+
+/* ---------------- Pemasukan Dashboard & SVG Chart ---------------- */
+function filteredOrders() {
+  return pemRange === "today"
+    ? ORDERS.filter(o => isToday(o.waktu))
+    : ORDERS.slice();
+}
+
+function renderPemasukan() {
+  const list = filteredOrders();
+  const lunas = list.filter(o => o.status === "Lunas");
+  const belum = list.filter(o => o.status !== "Lunas");
+  const totalLunas = lunas.reduce((s, o) => s + (o.total || 0), 0);
+  const totalBelum = belum.reduce((s, o) => s + (o.total || 0), 0);
+  const itemQty = list.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + i.qty, 0), 0);
+
+  const grid = $("#statGrid");
+  if (grid) {
+    grid.innerHTML = `
+      ${statCard("Pemasukan (Lunas)", rp(totalLunas), "green", "g", "💰")}
+      ${statCard("Belum Dibayar", rp(totalBelum), "orange", "o", "⏳")}
+      ${statCard("Jumlah Pesanan", list.length, "", "b", "🧾")}
+      ${statCard("Item Terjual", itemQty, "", "p", "📦")}
+    `;
+  }
+
+  // Render pure SVG bar chart
+  renderSalesChart(list);
+
+  // Top products with progress bars
+  const map = {};
+  list.forEach(o => {
+    (o.items || []).forEach(i => {
+      if (!map[i.nama]) map[i.nama] = { qty: 0, sub: 0 };
+      map[i.nama].qty += i.qty;
+      map[i.nama].sub += i.harga * i.qty;
+    });
+  });
+
+  const sorted = Object.entries(map).sort((a, b) => b[1].qty - a[1].qty);
+  const maxQty = sorted.length ? sorted[0][1].qty : 1;
+  const top = sorted.slice(0, 6);
+
+  const tb = $("#topBody");
+  if (tb) {
+    if (!top.length) {
+      tb.innerHTML = '<tr><td colspan="3" class="empty">Belum ada data transaksi.</td></tr>';
+    } else {
+      tb.innerHTML = top.map(([nama, val]) => {
+        const pct = Math.round((val.qty / maxQty) * 100);
+        return `
+          <tr>
+            <td>
+              <strong>${nama}</strong>
+              <div class="bar-track"><div class="bar-fill" style="width: ${pct}%"></div></div>
+            </td>
+            <td class="num">${val.qty}</td>
+            <td class="num">${rp(val.sub)}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+  }
+}
+
+function statCard(label, val, valClass, icoClass, emoji) {
+  return `
+    <div class="stat">
+      <div class="stat-ico ${icoClass}">${emoji}</div>
+      <div>
+        <div class="stat-label">${label}</div>
+        <div class="stat-value ${valClass}">${val}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSalesChart(orders) {
+  const container = $("#salesChart");
+  if (!container) return;
+
+  // Group sales by time slots (for today: 4-hour slots or hourly; for all: by date)
+  const slots = {};
+  if (pemRange === "today") {
+    for (let h = 8; h <= 20; h += 2) {
+      const key = `${String(h).padStart(2, '0')}:00`;
+      slots[key] = 0;
+    }
+    orders.forEach(o => {
+      if (o.status === "Lunas" && o.waktu) {
+        const d = new Date(o.waktu);
+        const hour = Math.floor(d.getHours() / 2) * 2;
+        const key = `${String(Math.max(8, Math.min(20, hour))).padStart(2, '0')}:00`;
+        if (slots[key] !== undefined) slots[key] += (o.total || 0);
+      }
+    });
+  } else {
+    // Group by last 7 dates
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" });
+      slots[key] = 0;
+    }
+    orders.forEach(o => {
+      if (o.status === "Lunas" && o.waktu) {
+        const d = new Date(o.waktu);
+        const key = d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" });
+        if (slots[key] !== undefined) slots[key] += (o.total || 0);
+      }
+    });
+  }
+
+  const keys = Object.keys(slots);
+  const values = Object.values(slots);
+  const maxVal = Math.max(...values, 10000);
+
+  const svgWidth = 600;
+  const svgHeight = 160;
+  const barWidth = 36;
+  const gap = (svgWidth - (keys.length * barWidth)) / (keys.length + 1);
+
+  let svgContent = `<svg viewBox="0 0 ${svgWidth} ${svgHeight}" style="width:100%; height:100%; overflow:visible;">`;
+
+  keys.forEach((key, idx) => {
+    const val = values[idx];
+    const barHeight = Math.max(4, Math.round((val / maxVal) * (svgHeight - 40)));
+    const x = gap + idx * (barWidth + gap);
+    const y = svgHeight - 24 - barHeight;
+
+    svgContent += `
+      <rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="6" fill="var(--accent)" opacity="${val > 0 ? '0.9' : '0.2'}">
+        <title>${key}: ${rp(val)}</title>
+      </rect>
+      <text x="${x + barWidth / 2}" y="${svgHeight - 6}" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text-2)">${key}</text>
+    `;
+    if (val > 0) {
+      svgContent += `
+        <text x="${x + barWidth / 2}" y="${y - 6}" text-anchor="middle" font-size="10" font-weight="700" fill="var(--accent)">${val >= 1000 ? Math.round(val / 1000) + 'k' : val}</text>
+      `;
+    }
+  });
+
+  svgContent += `</svg>`;
+  container.innerHTML = svgContent;
+}
+
+/* ---------------- Histori & Belum Bayar ---------------- */
+function tag(s) {
+  return s === "Lunas"
+    ? '<span class="tag lunas">✅ Lunas</span>'
+    : '<span class="tag belum">⏳ Belum Bayar</span>';
+}
+
+function renderHistori() {
+  const searchInput = $("#histSearch");
+  const q = (searchInput ? searchInput.value : "").toLowerCase().trim();
+
+  const list = ORDERS.slice()
+    .sort((a, b) => new Date(b.waktu) - new Date(a.waktu))
+    .filter(o => {
+      const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
+      return ((o.pelanggan || "") + " " + detailStr).toLowerCase().includes(q);
+    });
+
+  const tb = $("#histBody");
+  const mobileContainer = $("#histMobileCards");
+
+  if (!list.length) {
+    if (tb) tb.innerHTML = '<tr><td colspan="5" class="empty">📜 Belum ada riwayat transaksi.</td></tr>';
+    if (mobileContainer) mobileContainer.innerHTML = '<div class="empty">📜 Belum ada riwayat transaksi.</div>';
+    return;
+  }
+
+  // Desktop Table HTML
+  if (tb) {
+    tb.innerHTML = list.map(o => {
+      const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
+      return `
+        <tr>
+          <td>${fmtTime(o.waktu)}</td>
+          <td><strong>${o.pelanggan || "Pelanggan Umum"}</strong></td>
+          <td class="small">${detailStr}</td>
+          <td class="num">${rp(o.total)}</td>
+          <td>${tag(o.status)}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  // Mobile Cards HTML
+  if (mobileContainer) {
+    mobileContainer.innerHTML = list.map(o => {
+      const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
+      return `
+        <div class="trx-card">
+          <div class="trx-card-head">
+            <span>${fmtTime(o.waktu)}</span>
+            ${tag(o.status)}
+          </div>
+          <div class="trx-card-cust">${o.pelanggan || "Pelanggan Umum"}</div>
+          <div class="trx-card-detail">${detailStr}</div>
+          <div class="trx-card-foot">
+            <span class="small">Total</span>
+            <span class="trx-card-total">${rp(o.total)}</span>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+}
+
+function renderBelum() {
+  const list = ORDERS.filter(o => o.status !== "Lunas")
+    .sort((a, b) => new Date(b.waktu) - new Date(a.waktu));
+
+  // Update badge counters across UI
+  const count = list.length;
+  $$(".nav-badge-belum").forEach(b => {
+    b.textContent = count;
+    b.style.display = count > 0 ? "grid" : "none";
+  });
+
+  const tb = $("#belumBody");
+  const mobileContainer = $("#belumMobileCards");
+
+  if (!list.length) {
+    if (tb) tb.innerHTML = '<tr><td colspan="5" class="empty">🎉 Horay! Tidak ada tagihan tertunda.</td></tr>';
+    if (mobileContainer) mobileContainer.innerHTML = '<div class="empty">🎉 Horay! Tidak ada tagihan tertunda.</div>';
+    return;
+  }
+
+  // Desktop Table HTML
+  if (tb) {
+    tb.innerHTML = list.map(o => {
+      const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
+      return `
+        <tr>
+          <td>${fmtTime(o.waktu)}</td>
+          <td><strong>${o.pelanggan || "Pelanggan Umum"}</strong></td>
+          <td class="small">${detailStr}</td>
+          <td class="num">${rp(o.total)}</td>
+          <td style="text-align:right;">
+            <button class="btn-sm" data-id="${o.id}">Tandai Lunas</button>
+          </td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  // Mobile Cards HTML
+  if (mobileContainer) {
+    mobileContainer.innerHTML = list.map(o => {
+      const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
+      return `
+        <div class="trx-card">
+          <div class="trx-card-head">
+            <span>${fmtTime(o.waktu)}</span>
+            ${tag(o.status)}
+          </div>
+          <div class="trx-card-cust">${o.pelanggan || "Pelanggan Umum"}</div>
+          <div class="trx-card-detail">${detailStr}</div>
+          <div class="trx-card-foot">
+            <span class="trx-card-total">${rp(o.total)}</span>
+            <button class="btn-sm" data-id="${o.id}">Tandai Lunas</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  // Bind mark paid events
+  $$(".btn-sm[data-id]").forEach(b => {
+    b.onclick = async () => {
+      b.disabled = true;
+      b.textContent = "Processing...";
+      try {
+        await setPaid(b.dataset.id);
+        await loadOrders();
+        refreshAll();
+        toast("Status berhasil diubah ke Lunas ✓", "success");
+      } catch (e) {
+        toast("Gagal: " + e.message, "error");
+        b.disabled = false;
+        b.textContent = "Tandai Lunas";
+      }
+    };
+  });
+}
+
+/* ---------------- Navigation & View Controller ---------------- */
+function refreshAll() {
+  renderPemasukan();
+  renderHistori();
+  renderBelum();
+}
+
+function switchView(v) {
+  currentView = v;
+  $$("nav.desktop-nav button, .bottom-nav button").forEach(b => {
+    b.classList.toggle("active", b.dataset.view === v);
+  });
+  $$(".view").forEach(s => {
+    s.classList.toggle("active", s.id === "view-" + v);
+  });
+}
+
+/* ---------------- Initialization ---------------- */
+async function init() {
+  // Brand & Connection status setup
+  if ($("#brandName")) $("#brandName").textContent = CONFIG.STORE_NAME;
+  const badge = $("#connBadge");
+  const badgeText = $("#connText");
+  if (!DEMO && badge && badgeText) {
+    badge.classList.add("live");
+    badgeText.textContent = "Terhubung ke Sheet";
+  }
+
+  // Setup View Switching
+  $$("nav.desktop-nav button, .bottom-nav button").forEach(b => {
+    b.onclick = () => switchView(b.dataset.view);
+  });
+
+  // Setup Search inputs with debounce
+  let searchTimer;
+  const menuSearch = $("#menuSearch");
+  if (menuSearch) {
+    menuSearch.oninput = () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(renderMenu, 150);
+    };
+  }
+
+  const histSearch = $("#histSearch");
+  if (histSearch) {
+    histSearch.oninput = () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(renderHistori, 150);
+    };
+  }
+
+  // Setup Pemasukan Filters
+  $$("#pemFilter .chip").forEach(c => {
+    c.onclick = () => {
+      pemRange = c.dataset.range;
+      $$("#pemFilter .chip").forEach(x => x.classList.toggle("active", x === c));
+      renderPemasukan();
+    };
+  });
+
+  // Mobile Bottom-Sheet & FAB Cart Triggers
+  const fabCart = $("#fabCart");
+  if (fabCart) {
+    fabCart.onclick = openCartSheet;
+  }
+  const sheetBackdrop = $("#sheetBackdrop");
+  if (sheetBackdrop) {
+    sheetBackdrop.onclick = closeCartSheet;
+  }
+
+  // Modal Receipt Close Trigger
+  const receiptNew = $("#receiptNew");
+  if (receiptNew) {
+    receiptNew.onclick = closeReceiptModal;
+  }
+  const receiptBackdrop = $("#receiptBackdrop");
+  if (receiptBackdrop) {
+    receiptBackdrop.onclick = (e) => {
+      if (e.target === receiptBackdrop) closeReceiptModal();
+    };
+  }
+
+  // Show Skeleton while fetching initial data
+  showMenuSkeleton(8);
+  renderCategories();
+
+  try {
+    await loadMenu();
+    await loadOrders();
+  } catch (e) {
+    toast("Gagal memuat data: " + e.message, "error");
+  }
+
+  // Initial render
+  renderMenu();
+  renderCart();
+  refreshAll();
+}
+
+// Start application when DOM is fully loaded
+document.addEventListener("DOMContentLoaded", init);
