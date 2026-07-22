@@ -4,7 +4,7 @@
 
 /* ---------------- Configuration ---------------- */
 const CONFIG = {
-  API_URL: "", // URL Apps Script
+  API_URL: "https://script.google.com/macros/s/AKfycbzinsDZr9ija9EQaCoyz-r41QpuPyjNW7bVp8-nwuib_UeEdVUv0hJvi_Hbv4bjMs1N/exec", // URL Apps Script
   STORE_NAME: "Kasir Kantin",
 };
 
