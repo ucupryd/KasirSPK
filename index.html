@@ -1,18 +1,20 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kasir Kantin — Web POS Modern</title>
-  
+  <title>Kasir Cafe Seroja — Web POS Modern</title>
+
   <!-- Inter Font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  
+
   <!-- Design System CSS -->
   <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
 
   <!-- Top Header & Brand Bar -->
@@ -20,14 +22,14 @@
     <div class="bar">
       <div class="brand">
         <span class="logo">🧾</span>
-        <span id="brandName">Kasir Kantin</span>
+        <span id="brandName">Kasir Cafe Seroja</span>
       </div>
       <div class="badge" id="connBadge">
         <span class="dot"></span>
         <span id="connText">Mode Demo</span>
       </div>
     </div>
-    
+
     <!-- Desktop Navigation (5 Tabs) -->
     <nav class="desktop-nav" aria-label="Navigasi Utama">
       <button data-view="kasir" class="active">🛒 Kasir</button>
@@ -52,16 +54,19 @@
               <span class="search-icon">🔍</span>
               <input class="searchbox" id="menuSearch" placeholder="Cari menu kantin..." aria-label="Cari menu" />
             </div>
-            <button class="btn-add-menu" id="btnManageMenu" type="button" aria-label="Kelola Menu">⚙️ Kelola Menu</button>
+            <button class="btn-add-menu" id="btnManageMenu" type="button" aria-label="Kelola Menu">⚙️ Kelola
+              Menu</button>
           </div>
 
           <!-- Manage Menu Panel -->
           <div id="manageMenuPanel" class="manage-menu-panel">
             <span>Mode Edit Menu Aktif:</span>
-            <button class="btn-add-menu" id="btnAddMenu" type="button" style="height: 34px; background: var(--accent); color: #fff; padding: 0 12px; font-size: 13px;">➕ Tambah Menu Baru</button>
+            <button class="btn-add-menu" id="btnAddMenu" type="button"
+              style="height: 34px; background: var(--accent); color: #fff; padding: 0 12px; font-size: 13px;">➕ Tambah
+              Menu Baru</button>
           </div>
 
-          
+
           <!-- Category Chips -->
           <div class="category-chips" id="categoryChips"></div>
 
@@ -83,7 +88,7 @@
     <section class="view" id="view-keuangan">
       <h1 class="title">Ringkasan Keuangan</h1>
       <p class="sub">Laba/Rugi, pemasukan lunas, dan performa penjualan kantin.</p>
-      
+
       <div class="toolbar" id="keuFilter">
         <button class="chip active" data-range="today">Hari Ini</button>
         <button class="chip" data-range="all">Semua Waktu</button>
@@ -199,10 +204,11 @@
     <section class="view" id="view-histori">
       <h1 class="title">Histori Pesanan</h1>
       <p class="sub">Semua transaksi pesanan yang tercatat.</p>
-      
+
       <div class="search-wrapper">
         <span class="search-icon">🔍</span>
-        <input class="searchbox" id="histSearch" placeholder="Cari nama pelanggan atau item menu..." aria-label="Cari histori" />
+        <input class="searchbox" id="histSearch" placeholder="Cari nama pelanggan atau item menu..."
+          aria-label="Cari histori" />
       </div>
 
 
@@ -214,7 +220,7 @@
     <section class="view" id="view-belum">
       <h1 class="title">Belum Bayar</h1>
       <p class="sub">Daftar pesanan yang masih menunggu pembayaran.</p>
-      
+
       <div class="panel">
         <div class="tablewrap">
           <table>
@@ -319,4 +325,5 @@
   <!-- App Script -->
   <script src="app.js"></script>
 </body>
+
 </html>
