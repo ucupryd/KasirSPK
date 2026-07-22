@@ -60,7 +60,8 @@
   color: var(--text-2);
 }
 
-.form-group input, .form-group select {
+.form-group input,
+.form-group select {
   width: 100%;
   padding: 10px 14px;
   border: 1px solid var(--border);
@@ -72,7 +73,8 @@
   min-height: 44px;
 }
 
-.form-group input:focus, .form-group select:focus {
+.form-group input:focus,
+.form-group select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
@@ -1339,7 +1341,8 @@ td.num {
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   max-width: 100%;
   overflow-x: hidden;
 }
@@ -1349,11 +1352,14 @@ html, body {
 }
 
 @media (max-width: 480px) {
-  html, body {
+
+  html,
+  body {
     font-size: 14px;
   }
 
-  h1, .title {
+  h1,
+  .title {
     font-size: 20px;
   }
 
@@ -1363,7 +1369,8 @@ html, body {
 
   main {
     padding: 12px;
-    padding-bottom: 136px; /* Ruang untuk bottom nav + floating cart button */
+    padding-bottom: 136px;
+    /* Ruang untuk bottom nav + floating cart button */
   }
 
   .bar {
@@ -1489,7 +1496,8 @@ html, body {
     font-size: 12px;
   }
 
-  .form-group input, .form-group select {
+  .form-group input,
+  .form-group select {
     min-height: 38px;
     padding: 8px 10px;
     font-size: 13px;
@@ -1526,10 +1534,12 @@ html, body {
   align-items: center;
   margin-bottom: 16px;
 }
+
 .search-header-row .search-wrapper {
   flex: 1;
   margin-bottom: 0;
 }
+
 .btn-add-menu {
   padding: 0 16px;
   height: 44px;
@@ -1545,12 +1555,15 @@ html, body {
   justify-content: center;
   white-space: nowrap;
 }
+
 .btn-add-menu:hover {
   background: var(--accent);
   color: #fff;
 }
+
 .menu-card-del {
-  display: none; /* Hidden by default */
+  display: none;
+  /* Hidden by default */
   position: absolute;
   top: 8px;
   right: 8px;
@@ -1568,22 +1581,32 @@ html, body {
   border: 1px solid var(--border);
   z-index: 2;
 }
+
 .menu-card-del:hover {
   background: var(--red-soft);
   color: var(--red);
   border-color: var(--red);
 }
+
 .menu-grid.editing-menu .menu-card-del {
   display: flex;
 }
+
 .menu-grid.editing-menu .menu-card {
   border-color: var(--orange);
   animation: wiggle 0.15s ease infinite alternate;
 }
+
 @keyframes wiggle {
-  0% { transform: rotate(-0.7deg); }
-  100% { transform: rotate(0.7deg); }
+  0% {
+    transform: rotate(-0.7deg);
+  }
+
+  100% {
+    transform: rotate(0.7deg);
+  }
 }
+
 .manage-menu-panel {
   display: none;
   align-items: center;
@@ -1599,17 +1622,21 @@ html, body {
   color: var(--text);
   animation: fadeIn .2s var(--ease);
 }
+
 .manage-menu-panel.open {
   display: flex;
 }
+
 .btn-add-menu.active-manage {
   background: var(--red-soft);
   color: var(--red);
 }
+
 .btn-add-menu.active-manage:hover {
   background: var(--red);
   color: #fff;
 }
+
 @media (max-width: 480px) {
   .btn-add-menu {
     height: 40px;

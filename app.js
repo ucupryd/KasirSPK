@@ -5,7 +5,7 @@
 /* ---------------- Configuration ---------------- */
 const CONFIG = {
   API_URL: "https://script.google.com/macros/s/AKfycbzinsDZr9ija9EQaCoyz-r41QpuPyjNW7bVp8-nwuib_UeEdVUv0hJvi_Hbv4bjMs1N/exec", // URL Apps Script
-  STORE_NAME: "Kasir Kantin",
+  STORE_NAME: "Kasir Cafe Seroja",
 };
 
 /* ---------------- State ---------------- */
@@ -89,8 +89,8 @@ function isToday(iso) {
   if (!iso) return false;
   const d = new Date(iso), n = new Date();
   return d.getFullYear() === n.getFullYear() &&
-         d.getMonth() === n.getMonth() &&
-         d.getDate() === n.getDate();
+    d.getMonth() === n.getMonth() &&
+    d.getDate() === n.getDate();
 }
 
 function fmtTime(iso) {
@@ -141,13 +141,13 @@ async function loadData() {
   if (DEMO) {
     if (!localStorage.getItem("kasir_menu")) LS.set("kasir_menu", MENU_SEED);
     if (!localStorage.getItem("kasir_expenses")) LS.set("kasir_expenses", EXPENSE_SEED);
-    
+
     MENU = LS.get("kasir_menu", MENU_SEED);
     ORDERS = LS.get("kasir_orders", []);
     EXPENSES = LS.get("kasir_expenses", []);
     return;
   }
-  
+
   // Live Mode: Fetch individual endpoints safely
   try {
     const resMenu = await apiGet("getMenu");
@@ -361,7 +361,7 @@ function renderMenu() {
         flashCartBadge();
       }
     };
-    
+
     const delBtn = card.querySelector(".menu-card-del");
     if (delBtn) {
       delBtn.onclick = (e) => {
@@ -369,7 +369,7 @@ function renderMenu() {
         onHapusMenu(e, m.nama);
       };
     }
-    
+
     grid.appendChild(card);
   });
 }
@@ -639,7 +639,7 @@ function renderKeuangan() {
   const totalPemasukanLunas = lunasOrders.reduce((s, o) => s + (o.total || 0), 0);
   const totalBelum = belumOrders.reduce((s, o) => s + (o.total || 0), 0);
   const totalPengeluaran = expList.reduce((s, e) => s + (Number(e.jumlah) || 0), 0);
-  
+
   // Laba / Rugi = Pemasukan (Lunas) - Total Pengeluaran
   const labaRugi = totalPemasukanLunas - totalPengeluaran;
 
@@ -895,7 +895,7 @@ function toggleEditMenuMode() {
   const panel = $("#manageMenuPanel");
   const grid = $("#menuGrid");
   const btnManage = $("#btnManageMenu");
-  
+
   if (panel) panel.classList.toggle("open", editMenuMode);
   if (grid) grid.classList.toggle("editing-menu", editMenuMode);
   if (btnManage) {
