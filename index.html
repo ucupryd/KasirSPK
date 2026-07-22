@@ -46,11 +46,15 @@
     <section class="view active" id="view-kasir">
       <div class="kasir">
         <div>
-          <!-- Search box -->
-          <div class="search-wrapper">
-            <span class="search-icon">🔍</span>
-            <input class="searchbox" id="menuSearch" placeholder="Cari menu kantin..." aria-label="Cari menu" />
+          <!-- Search Box & Add Menu Row -->
+          <div class="search-header-row">
+            <div class="search-wrapper">
+              <span class="search-icon">🔍</span>
+              <input class="searchbox" id="menuSearch" placeholder="Cari menu kantin..." aria-label="Cari menu" />
+            </div>
+            <button class="btn-add-menu" id="btnAddMenu" type="button" aria-label="Tambah Menu Baru">+ Tambah Menu</button>
           </div>
+
           
           <!-- Category Chips -->
           <div class="category-chips" id="categoryChips"></div>
@@ -205,6 +209,7 @@
                 <th>Detail Items</th>
                 <th class="num">Total</th>
                 <th>Status</th>
+                <th style="text-align:right;">Aksi</th>
               </tr>
             </thead>
             <tbody id="histBody"></tbody>
@@ -298,6 +303,25 @@
       <span>Belum Bayar</span>
     </button>
   </nav>
+
+  <!-- Modal Tambah Menu -->
+  <div class="modal-backdrop" id="menuBackdrop">
+    <form class="modal" id="formTambahMenu">
+      <h2 style="margin-bottom: 16px;">➕ Tambah Menu Baru</h2>
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label for="inputNama">Nama Menu</label>
+        <input id="inputNama" placeholder="cth: Cilok Bakar" required />
+      </div>
+      <div class="form-group" style="margin-bottom: 20px;">
+        <label for="inputHarga">Harga (Rp)</label>
+        <input id="inputHarga" type="number" min="0" placeholder="cth: 5000" required />
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%;">
+        <button class="btn-ghost" type="button" id="btnBatalMenu" style="margin-top: 0;">Batal</button>
+        <button class="btn-primary" type="submit" id="btnSimpanMenu">Simpan</button>
+      </div>
+    </form>
+  </div>
 
   <!-- Notification Toast Container -->
   <div id="toast"></div>

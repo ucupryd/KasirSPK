@@ -4,7 +4,7 @@
 
 /* ---------------- Configuration ---------------- */
 const CONFIG = {
-  API_URL: "https://script.google.com/macros/s/AKfycbzinsDZr9ija9EQaCoyz-r41QpuPyjNW7bVp8-nwuib_UeEdVUv0hJvi_Hbv4bjMs1N/exec", // URL Apps Script
+  API_URL: "", // URL Apps Script
   STORE_NAME: "Kasir Kantin",
 };
 
@@ -234,6 +234,54 @@ async function deleteExpenseItem(id) {
   await apiPost({ action: "deleteExpense", id: id });
 }
 
+async function tambahMenu(nama, harga) {
+  nama = String(nama || '').trim();
+  harga = Number(harga) || 0;
+  if (!nama) throw new Error('Nama menu wajib diisi');
+  if (DEMO) {
+    const i = MENU.findIndex(m => m.nama.toLowerCase() === nama.toLowerCase());
+    if (i >= 0) {
+      MENU[i].harga = harga;
+    } else {
+      const emoji = getMenuEmoji(nama);
+      const kategori = (emoji === "🧃" || emoji === "🥛" || emoji === "☕" || emoji === "🧊" ? "Minuman" : "Makanan");
+      MENU.push({ nama, harga, kategori });
+    }
+    LS.set('kasir_menu', MENU);
+    return { nama, harga };
+  }
+  const m = await apiPost({ action: 'addMenu', nama, harga });
+  const i = MENU.findIndex(x => x.nama.toLowerCase() === nama.toLowerCase());
+  if (i >= 0) {
+    MENU[i].harga = m.harga;
+  } else {
+    const emoji = getMenuEmoji(m.nama);
+    const kategori = (emoji === "🧃" || emoji === "🥛" || emoji === "☕" || emoji === "🧊" ? "Minuman" : "Makanan");
+    MENU.push({ nama: m.nama, harga: m.harga, kategori });
+  }
+  return m;
+}
+
+async function hapusMenu(nama) {
+  if (DEMO) {
+    MENU = MENU.filter(m => m.nama !== nama);
+    LS.set('kasir_menu', MENU);
+    return;
+  }
+  await apiPost({ action: 'deleteMenu', nama });
+  MENU = MENU.filter(m => m.nama !== nama);
+}
+
+async function hapusPesanan(id) {
+  if (DEMO) {
+    ORDERS = ORDERS.filter(o => o.id !== id);
+    LS.set('kasir_orders', ORDERS);
+    return;
+  }
+  await apiPost({ action: 'deleteOrder', id });
+  ORDERS = ORDERS.filter(o => o.id !== id);
+}
+
 /* ---------------- Render: Skeleton Loader ---------------- */
 function showMenuSkeleton(n = 8) {
   const grid = $("#menuGrid");
@@ -287,19 +335,38 @@ function renderMenu() {
 
   list.forEach(m => {
     const emoji = getMenuEmoji(m.nama, m.kategori);
-    const btn = document.createElement("button");
-    btn.className = "menu-card";
-    btn.setAttribute("aria-label", `Tambah ${m.nama} ${rp(m.harga)}`);
-    btn.innerHTML = `
+    const card = document.createElement("div");
+    card.className = "menu-card";
+    card.setAttribute("role", "button");
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("aria-label", `Tambah ${m.nama} ${rp(m.harga)}`);
+    card.innerHTML = `
+      <button class="menu-card-del" aria-label="Hapus menu" title="Hapus menu">&times;</button>
       <span class="menu-emoji">${emoji}</span>
       <span class="menu-name">${m.nama}</span>
       <span class="menu-price">${rp(m.harga)}</span>
     `;
-    btn.onclick = () => {
+    card.onclick = () => {
       addToCart(m);
       flashCartBadge();
     };
-    grid.appendChild(btn);
+    card.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        addToCart(m);
+        flashCartBadge();
+      }
+    };
+    
+    const delBtn = card.querySelector(".menu-card-del");
+    if (delBtn) {
+      delBtn.onclick = (e) => {
+        e.stopPropagation();
+        onHapusMenu(e, m.nama);
+      };
+    }
+    
+    grid.appendChild(card);
   });
 }
 
@@ -819,6 +886,81 @@ async function handleAddExpense(e) {
   }
 }
 
+async function openMenuModal() {
+  const modal = $("#menuBackdrop");
+  if (modal) {
+    modal.classList.add("open");
+    const inputNama = $("#inputNama");
+    if (inputNama) inputNama.focus();
+  }
+}
+
+async function closeMenuModal() {
+  const modal = $("#menuBackdrop");
+  if (modal) {
+    modal.classList.remove("open");
+    const form = $("#formTambahMenu");
+    if (form) form.reset();
+  }
+}
+
+async function onSubmitTambahMenu(e) {
+  e.preventDefault();
+  const inputNama = $("#inputNama");
+  const inputHarga = $("#inputHarga");
+  const btnSubmit = $("#btnSimpanMenu");
+
+  const nama = inputNama ? inputNama.value : "";
+  const harga = inputHarga ? inputHarga.value : 0;
+
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = "Menyimpan...";
+  }
+
+  try {
+    await tambahMenu(nama, harga);
+    closeMenuModal();
+    await loadData();
+    refreshAll();
+    renderMenu();
+    toast('Menu berhasil ditambahkan ✓');
+  } catch (err) {
+    toast(err.message || 'Gagal menambah menu', 'error');
+  } finally {
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.textContent = "Simpan";
+    }
+  }
+}
+
+async function onHapusMenu(ev, nama) {
+  ev.stopPropagation();
+  if (!confirm(`Hapus menu "${nama}"?`)) return;
+  try {
+    await hapusMenu(nama);
+    await loadData();
+    refreshAll();
+    renderMenu();
+    toast('Menu berhasil dihapus ✓');
+  } catch (err) {
+    toast(err.message || 'Gagal menghapus menu', 'error');
+  }
+}
+
+async function onHapusPesanan(id) {
+  if (!confirm('Hapus pesanan ini?')) return;
+  try {
+    await hapusPesanan(id);
+    await loadData();
+    refreshAll();
+    toast('Pesanan berhasil dihapus ✓');
+  } catch (err) {
+    toast(err.message || 'Gagal menghapus pesanan', 'error');
+  }
+}
+
 /* ---------------- Histori & Belum Bayar ---------------- */
 function tag(s) {
   return s === "Lunas"
@@ -841,7 +983,7 @@ function renderHistori() {
   const mobileContainer = $("#histMobileCards");
 
   if (!list.length) {
-    if (tb) tb.innerHTML = '<tr><td colspan="5" class="empty">📜 Belum ada riwayat transaksi.</td></tr>';
+    if (tb) tb.innerHTML = '<tr><td colspan="6" class="empty">📜 Belum ada riwayat transaksi.</td></tr>';
     if (mobileContainer) mobileContainer.innerHTML = '<div class="empty">📜 Belum ada riwayat transaksi.</div>';
     return;
   }
@@ -856,6 +998,9 @@ function renderHistori() {
           <td class="small">${detailStr}</td>
           <td class="num">${rp(o.total)}</td>
           <td>${tag(o.status)}</td>
+          <td style="text-align:right;">
+            <button class="btn-danger-sm btn-delete-order" data-order-id="${o.id}" aria-label="Hapus pesanan">Hapus</button>
+          </td>
         </tr>
       `;
     }).join("");
@@ -873,13 +1018,21 @@ function renderHistori() {
           <div class="trx-card-cust">${o.pelanggan || "Pelanggan Umum"}</div>
           <div class="trx-card-detail">${detailStr}</div>
           <div class="trx-card-foot">
-            <span class="small">Total</span>
-            <span class="trx-card-total">${rp(o.total)}</span>
+            <div>
+              <span class="small" style="display:block;">Total</span>
+              <span class="trx-card-total">${rp(o.total)}</span>
+            </div>
+            <button class="btn-danger-sm btn-delete-order" data-order-id="${o.id}">Hapus</button>
           </div>
         </div>
       `;
     }).join("");
   }
+
+  // Bind Delete buttons in Histori
+  $$("#view-histori .btn-delete-order").forEach(b => {
+    b.onclick = () => onHapusPesanan(b.dataset.orderId);
+  });
 }
 
 function renderBelum() {
@@ -910,8 +1063,9 @@ function renderBelum() {
           <td><strong>${o.pelanggan || "Pelanggan Umum"}</strong></td>
           <td class="small">${detailStr}</td>
           <td class="num">${rp(o.total)}</td>
-          <td style="text-align:right;">
+          <td style="text-align:right; white-space: nowrap;">
             <button class="btn-sm" data-id="${o.id}">Tandai Lunas</button>
+            <button class="btn-danger-sm btn-delete-order" data-order-id="${o.id}" aria-label="Hapus pesanan" style="margin-left: 6px;">Hapus</button>
           </td>
         </tr>
       `;
@@ -931,14 +1085,17 @@ function renderBelum() {
           <div class="trx-card-detail">${detailStr}</div>
           <div class="trx-card-foot">
             <span class="trx-card-total">${rp(o.total)}</span>
-            <button class="btn-sm" data-id="${o.id}">Tandai Lunas</button>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn-sm" data-id="${o.id}">Tandai Lunas</button>
+              <button class="btn-danger-sm btn-delete-order" data-order-id="${o.id}">Hapus</button>
+            </div>
           </div>
         </div>
       `;
     }).join("");
   }
 
-  $$(".btn-sm[data-id]").forEach(b => {
+  $$("#view-belum .btn-sm[data-id]").forEach(b => {
     b.onclick = async () => {
       b.disabled = true;
       b.textContent = "Processing...";
@@ -953,6 +1110,11 @@ function renderBelum() {
         b.textContent = "Tandai Lunas";
       }
     };
+  });
+
+  // Bind Delete buttons in Belum Bayar
+  $$("#view-belum .btn-delete-order").forEach(b => {
+    b.onclick = () => onHapusPesanan(b.dataset.orderId);
   });
 }
 
@@ -1027,6 +1189,26 @@ async function init() {
   const expForm = $("#expForm");
   if (expForm) {
     expForm.onsubmit = handleAddExpense;
+  }
+
+  // Setup Tambah Menu
+  const btnAddMenu = $("#btnAddMenu");
+  if (btnAddMenu) {
+    btnAddMenu.onclick = openMenuModal;
+  }
+  const btnBatalMenu = $("#btnBatalMenu");
+  if (btnBatalMenu) {
+    btnBatalMenu.onclick = closeMenuModal;
+  }
+  const formTambahMenu = $("#formTambahMenu");
+  if (formTambahMenu) {
+    formTambahMenu.onsubmit = onSubmitTambahMenu;
+  }
+  const menuBackdrop = $("#menuBackdrop");
+  if (menuBackdrop) {
+    menuBackdrop.onclick = (e) => {
+      if (e.target === menuBackdrop) closeMenuModal();
+    };
   }
 
   const fabCart = $("#fabCart");
