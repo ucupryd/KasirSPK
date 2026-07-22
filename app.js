@@ -979,31 +979,11 @@ function renderHistori() {
       return ((o.pelanggan || "") + " " + detailStr).toLowerCase().includes(q);
     });
 
-  const tb = $("#histBody");
   const mobileContainer = $("#histMobileCards");
 
   if (!list.length) {
-    if (tb) tb.innerHTML = '<tr><td colspan="6" class="empty">📜 Belum ada riwayat transaksi.</td></tr>';
     if (mobileContainer) mobileContainer.innerHTML = '<div class="empty">📜 Belum ada riwayat transaksi.</div>';
     return;
-  }
-
-  if (tb) {
-    tb.innerHTML = list.map(o => {
-      const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
-      return `
-        <tr>
-          <td>${fmtTime(o.waktu)}</td>
-          <td><strong>${o.pelanggan || "Pelanggan Umum"}</strong></td>
-          <td class="small">${detailStr}</td>
-          <td class="num">${rp(o.total)}</td>
-          <td>${tag(o.status)}</td>
-          <td style="text-align:right;">
-            <button class="btn-danger-sm btn-delete-order" data-order-id="${o.id}" aria-label="Hapus pesanan">Hapus</button>
-          </td>
-        </tr>
-      `;
-    }).join("");
   }
 
   if (mobileContainer) {
