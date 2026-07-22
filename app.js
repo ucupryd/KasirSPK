@@ -18,6 +18,7 @@ let payStatus = "Lunas";
 let keuRange = "today";
 let expRange = "today";
 let activeCategory = "Semua";
+let editMenuMode = false;
 let currentView = "kasir";
 let lastSubmittedOrder = null;
 
@@ -318,6 +319,7 @@ function renderMenu() {
   const grid = $("#menuGrid");
   if (!grid) return;
 
+  grid.classList.toggle("editing-menu", editMenuMode);
   grid.innerHTML = "";
 
   const list = MENU.filter(m => {
@@ -347,12 +349,14 @@ function renderMenu() {
       <span class="menu-price">${rp(m.harga)}</span>
     `;
     card.onclick = () => {
+      if (editMenuMode) return;
       addToCart(m);
       flashCartBadge();
     };
     card.onkeydown = (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
+        if (editMenuMode) return;
         addToCart(m);
         flashCartBadge();
       }
@@ -886,6 +890,20 @@ async function handleAddExpense(e) {
   }
 }
 
+function toggleEditMenuMode() {
+  editMenuMode = !editMenuMode;
+  const panel = $("#manageMenuPanel");
+  const grid = $("#menuGrid");
+  const btnManage = $("#btnManageMenu");
+  
+  if (panel) panel.classList.toggle("open", editMenuMode);
+  if (grid) grid.classList.toggle("editing-menu", editMenuMode);
+  if (btnManage) {
+    btnManage.innerHTML = editMenuMode ? "✅ Selesai" : "⚙️ Kelola Menu";
+    btnManage.classList.toggle("active-manage", editMenuMode);
+  }
+}
+
 async function openMenuModal() {
   const modal = $("#menuBackdrop");
   if (modal) {
@@ -1172,6 +1190,10 @@ async function init() {
   }
 
   // Setup Tambah Menu
+  const btnManageMenu = $("#btnManageMenu");
+  if (btnManageMenu) {
+    btnManageMenu.onclick = toggleEditMenuMode;
+  }
   const btnAddMenu = $("#btnAddMenu");
   if (btnAddMenu) {
     btnAddMenu.onclick = openMenuModal;

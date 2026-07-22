@@ -1550,6 +1550,7 @@ html, body {
   color: #fff;
 }
 .menu-card-del {
+  display: none; /* Hidden by default */
   position: absolute;
   top: 8px;
   right: 8px;
@@ -1558,7 +1559,6 @@ html, body {
   border-radius: 50%;
   background: var(--surface-2);
   color: var(--text-2);
-  display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
@@ -1572,6 +1572,43 @@ html, body {
   background: var(--red-soft);
   color: var(--red);
   border-color: var(--red);
+}
+.menu-grid.editing-menu .menu-card-del {
+  display: flex;
+}
+.menu-grid.editing-menu .menu-card {
+  border-color: var(--orange);
+  animation: wiggle 0.15s ease infinite alternate;
+}
+@keyframes wiggle {
+  0% { transform: rotate(-0.7deg); }
+  100% { transform: rotate(0.7deg); }
+}
+.manage-menu-panel {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  margin-bottom: 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  animation: fadeIn .2s var(--ease);
+}
+.manage-menu-panel.open {
+  display: flex;
+}
+.btn-add-menu.active-manage {
+  background: var(--red-soft);
+  color: var(--red);
+}
+.btn-add-menu.active-manage:hover {
+  background: var(--red);
+  color: #fff;
 }
 @media (max-width: 480px) {
   .btn-add-menu {
