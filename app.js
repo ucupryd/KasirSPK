@@ -15,12 +15,78 @@ let ORDERS = [];
 let EXPENSES = [];
 let cart = {}; // { nama: { nama, harga, qty } }
 let payStatus = "Lunas";
+let payMethod = "Cash";
 let keuRange = "today";
 let expRange = "today";
 let activeCategory = "Semua";
 let editMenuMode = false;
 let currentView = "kasir";
 let lastSubmittedOrder = null;
+let arahHistori = "desc";
+let keuSortOrder = "desc";
+let pendingPaidId = null;
+let pendingButton = null;
+
+function isWithinDays(iso, days) {
+  if (!iso) return false;
+  const d = new Date(iso);
+  const limit = new Date();
+  limit.setDate(limit.getDate() - days);
+  limit.setHours(0, 0, 0, 0);
+  return d >= limit;
+}
+
+function sortByTanggal(list, arah = 'desc') {
+  return [...list].sort((a, b) => {
+    const da = new Date(a.waktu).getTime(), db = new Date(b.waktu).getTime();
+    return arah === 'asc' ? da - db : db - da;
+  });
+}
+
+function toggleSortHistori() {
+  arahHistori = arahHistori === 'desc' ? 'asc' : 'desc';
+  const icon = $("#sortHistIcon");
+  if (icon) {
+    icon.textContent = arahHistori === 'desc' ? '↓' : '↑';
+  }
+  renderHistori();
+}
+
+function openPaymentMethodModal(id, buttonEl) {
+  pendingPaidId = id;
+  pendingButton = buttonEl;
+  const modal = $("#methodBackdrop");
+  if (modal) modal.classList.add("open");
+}
+
+function closePaymentMethodModal() {
+  pendingPaidId = null;
+  pendingButton = null;
+  const modal = $("#methodBackdrop");
+  if (modal) modal.classList.remove("open");
+}
+
+async function handleProcessMarkPaid(metode) {
+  if (!pendingPaidId) return;
+  const b = pendingButton;
+  if (b) {
+    b.disabled = true;
+    b.textContent = "Processing...";
+  }
+  closePaymentMethodModal();
+  try {
+    await setPaid(pendingPaidId, metode);
+    await loadData();
+    refreshAll();
+    toast(`Status berhasil diubah ke Lunas (${metode}) ✓`, "success");
+  } catch (e) {
+    toast("Gagal: " + e.message, "error");
+    if (b) {
+      b.disabled = false;
+      b.textContent = "Tandai Lunas";
+    }
+  }
+}
 
 const MENU_SEED = [
   { nama: "Sarimi Gelas", harga: 3000, kategori: "Makanan" },
@@ -96,12 +162,16 @@ function isToday(iso) {
 function fmtTime(iso) {
   if (!iso) return "-";
   const d = new Date(iso);
-  return d.toLocaleString("id-ID", {
+  const tgl = d.toLocaleDateString("id-ID", {
     day: "2-digit",
     month: "short",
+    year: "numeric"
+  });
+  const jam = d.toLocaleTimeString("id-ID", {
     hour: "2-digit",
     minute: "2-digit"
-  });
+  }).replace(/\:/g, '.');
+  return `${tgl}, ${jam}`;
 }
 
 function getMenuEmoji(nama = "", kategori = "") {
@@ -190,18 +260,20 @@ async function saveOrder(order) {
     action: "addOrder",
     pelanggan: order.pelanggan,
     status: order.status,
+    metode: order.metode,
     items: order.items
   });
   return result;
 }
 
-async function setPaid(id) {
+async function setPaid(id, metode) {
+  metode = metode === "QRIS" ? "QRIS" : "Cash";
   if (DEMO) {
-    const o = LS.get("kasir_orders", []).map(x => x.id === id ? { ...x, status: "Lunas" } : x);
+    const o = LS.get("kasir_orders", []).map(x => x.id === id ? { ...x, status: "Lunas", metode: metode } : x);
     LS.set("kasir_orders", o);
     return;
   }
-  await apiPost({ action: "markPaid", id: id });
+  await apiPost({ action: "markPaid", id: id, metode: metode });
 }
 
 async function saveExpense(keterangan, kategori, jumlah) {
@@ -476,6 +548,18 @@ function renderCart() {
       </div>
     `;
 
+    if (payStatus === "Lunas") {
+      h += `
+        <div class="field">
+          <label>Metode Pembayaran</label>
+          <div class="segmented" role="tablist">
+            <button class="seg ${payMethod === 'Cash' ? 'on' : ''}" data-m="Cash" role="tab" aria-selected="${payMethod === 'Cash'}">💵 Cash</button>
+            <button class="seg ${payMethod === 'QRIS' ? 'on' : ''}" data-m="QRIS" role="tab" aria-selected="${payMethod === 'QRIS'}">📱 QRIS</button>
+          </div>
+        </div>
+      `;
+    }
+
     h += `<button class="btn-primary cart-save-btn" id="${isSheet ? 'saveBtnSheet' : 'saveBtnDesktop'}">Simpan Pesanan · ${rp(totalAmt)}</button>`;
     h += `<button class="btn-ghost cart-clear-btn">Kosongkan Keranjang</button>`;
 
@@ -500,9 +584,16 @@ function bindCartEvents(container, isSheet) {
     b.onclick = () => changeQty(b.dataset.m, Number(b.dataset.d));
   });
 
-  container.querySelectorAll(".segmented button").forEach(b => {
+  container.querySelectorAll(".segmented button[data-s]").forEach(b => {
     b.onclick = () => {
       payStatus = b.dataset.s;
+      renderCart();
+    };
+  });
+
+  container.querySelectorAll(".segmented button[data-m]").forEach(b => {
+    b.onclick = () => {
+      payMethod = b.dataset.m;
       renderCart();
     };
   });
@@ -555,15 +646,18 @@ async function submitOrder(isSheet = false) {
   const pelanggan = (nameInput ? nameInput.value : "").trim();
 
   try {
+    const orderMetode = payStatus === 'Lunas' ? payMethod : '';
     await saveOrder({
       pelanggan,
       status: payStatus,
+      metode: orderMetode,
       items: items.map(i => ({ nama: i.nama, harga: i.harga, qty: i.qty }))
     });
 
     lastSubmittedOrder = {
       pelanggan: pelanggan || "Pelanggan Umum",
       status: payStatus,
+      metode: orderMetode,
       items: items.slice(),
       total: cartTotal(),
       waktu: new Date().toISOString()
@@ -571,6 +665,7 @@ async function submitOrder(isSheet = false) {
 
     cart = {};
     payStatus = "Lunas";
+    payMethod = "Cash";
     closeCartSheet();
     renderCart();
 
@@ -616,22 +711,28 @@ function closeReceiptModal() {
 
 /* ---------------- Keuangan (Pemasukan, Pengeluaran, & Laba/Rugi) ---------------- */
 function filteredOrders() {
-  return keuRange === "today"
-    ? ORDERS.filter(o => isToday(o.waktu))
-    : ORDERS.slice();
+  if (keuRange === "today") {
+    return ORDERS.filter(o => isToday(o.waktu));
+  } else if (keuRange === "7days") {
+    return ORDERS.filter(o => isWithinDays(o.waktu, 7));
+  }
+  return ORDERS.slice();
 }
 
 function filteredExpenses() {
-  return expRange === "today"
-    ? EXPENSES.filter(e => isToday(e.waktu))
-    : EXPENSES.slice();
+  if (expRange === "today") {
+    return EXPENSES.filter(e => isToday(e.waktu));
+  } else if (expRange === "7days") {
+    return EXPENSES.filter(e => isWithinDays(e.waktu, 7));
+  }
+  return EXPENSES.slice();
 }
 
 function renderKeuangan() {
   const ordersList = filteredOrders();
   const expList = keuRange === "today"
     ? EXPENSES.filter(e => isToday(e.waktu))
-    : EXPENSES.slice();
+    : (keuRange === "7days" ? EXPENSES.filter(e => isWithinDays(e.waktu, 7)) : EXPENSES.slice());
 
   const lunasOrders = ordersList.filter(o => o.status === "Lunas");
   const belumOrders = ordersList.filter(o => o.status !== "Lunas");
@@ -703,6 +804,8 @@ function renderKeuangan() {
       }).join("");
     }
   }
+
+  renderKlasemen();
 }
 
 function statCard(label, val, valClass, icoClass, emoji) {
@@ -722,11 +825,16 @@ function renderSalesChart(orders) {
   if (!container) return;
 
   const slots = {};
+  let keys = [];
+
   if (keuRange === "today") {
+    const hours = [];
     for (let h = 8; h <= 20; h += 2) {
-      const key = `${String(h).padStart(2, '0')}:00`;
-      slots[key] = 0;
+      hours.push(`${String(h).padStart(2, '0')}:00`);
     }
+    keys = keuSortOrder === "desc" ? hours.reverse() : hours;
+    keys.forEach(k => slots[k] = 0);
+
     orders.forEach(o => {
       if (o.status === "Lunas" && o.waktu) {
         const d = new Date(o.waktu);
@@ -735,13 +843,52 @@ function renderSalesChart(orders) {
         if (slots[key] !== undefined) slots[key] += (o.total || 0);
       }
     });
-  } else {
-    for (let i = 6; i >= 0; i--) {
+  } else if (keuRange === "7days") {
+    const days = [];
+    for (let i = 0; i < 7; i++) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const key = d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" });
-      slots[key] = 0;
+      days.push(d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" }));
     }
+    keys = keuSortOrder === "desc" ? days : days.reverse();
+    keys.forEach(k => slots[k] = 0);
+
+    orders.forEach(o => {
+      if (o.status === "Lunas" && o.waktu) {
+        const d = new Date(o.waktu);
+        const key = d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" });
+        if (slots[key] !== undefined) slots[key] += (o.total || 0);
+      }
+    });
+  } else {
+    const dates = new Set();
+    orders.forEach(o => {
+      if (o.status === "Lunas" && o.waktu) {
+        dates.add(new Date(o.waktu).toLocaleDateString("id-ID", { day: "2-digit", month: "short" }));
+      }
+    });
+    if (dates.size === 0) {
+      for (let i = 0; i < 7; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        dates.add(d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" }));
+      }
+    }
+    const days = Array.from(dates);
+    days.sort((a, b) => {
+      const parseDate = str => {
+        const parts = str.split(' ');
+        const day = parseInt(parts[0], 10);
+        const months = { 'Jan':0, 'Feb':1, 'Mar':2, 'Apr':3, 'Mei':4, 'Jun':5, 'Jul':6, 'Agu':7, 'Sep':8, 'Okt':9, 'Nov':10, 'Des':11 };
+        const month = months[parts[1]] || 0;
+        return new Date(new Date().getFullYear(), month, day);
+      };
+      return parseDate(a) - parseDate(b);
+    });
+    keys = keuSortOrder === "desc" ? days.reverse() : days;
+    keys = keys.slice(0, 10);
+    keys.forEach(k => slots[k] = 0);
+
     orders.forEach(o => {
       if (o.status === "Lunas" && o.waktu) {
         const d = new Date(o.waktu);
@@ -751,8 +898,7 @@ function renderSalesChart(orders) {
     });
   }
 
-  const keys = Object.keys(slots);
-  const values = Object.values(slots);
+  const values = keys.map(k => slots[k]);
   const maxVal = Math.max(...values, 10000);
 
   const svgWidth = 600;
@@ -763,7 +909,7 @@ function renderSalesChart(orders) {
   let svgContent = `<svg viewBox="0 0 ${svgWidth} ${svgHeight}" style="width:100%; height:100%; overflow:visible;">`;
 
   keys.forEach((key, idx) => {
-    const val = values[idx];
+    const val = slots[key] || 0;
     const barHeight = Math.max(4, Math.round((val / maxVal) * (svgHeight - 40)));
     const x = gap + idx * (barWidth + gap);
     const y = svgHeight - 24 - barHeight;
@@ -783,6 +929,43 @@ function renderSalesChart(orders) {
 
   svgContent += `</svg>`;
   container.innerHTML = svgContent;
+}
+
+function hitungKlasemen(list = ORDERS) {
+  const map = {};
+  list.forEach(o => {
+    const nama = (o.pelanggan || "").trim() || "Tanpa Nama";
+    if (!map[nama]) map[nama] = { nama, total: 0, jumlah: 0 };
+    map[nama].total += (o.total || 0);
+    map[nama].jumlah += 1;
+  });
+  return Object.values(map).sort((a, b) => b.total - a.total);
+}
+
+function renderKlasemen() {
+  const ordersList = filteredOrders();
+  const klasemen = hitungKlasemen(ordersList);
+  const tb = $("#klasemenBody");
+  if (!tb) return;
+
+  const medali = ['🥇', '🥈', '🥉'];
+
+  if (!klasemen.length) {
+    tb.innerHTML = '<tr><td colspan="4" class="empty">👑 Belum ada data pelanggan.</td></tr>';
+    return;
+  }
+
+  tb.innerHTML = klasemen.map((c, i) => {
+    const rankLabel = medali[i] || `#${i + 1}`;
+    return `
+      <tr>
+        <td><strong>${rankLabel}</strong></td>
+        <td><strong>${c.nama}</strong></td>
+        <td class="num">${c.jumlah}x</td>
+        <td class="num" style="color: var(--accent); font-weight: 700;">${rp(c.total)}</td>
+      </tr>
+    `;
+  }).join("");
 }
 
 /* ---------------- Pengeluaran View (BARU) ---------------- */
@@ -808,7 +991,7 @@ function renderPengeluaran() {
   if (tb) {
     tb.innerHTML = list.map(e => `
       <tr>
-        <td>${fmtTime(e.waktu)}</td>
+        <td style="white-space: nowrap;">${fmtTime(e.waktu)}</td>
         <td><strong>${e.keterangan || "-"}</strong></td>
         <td>${expTag(e.kategori)}</td>
         <td class="num">${rp(e.jumlah)}</td>
@@ -982,49 +1165,81 @@ async function onHapusPesanan(id) {
 /* ---------------- Histori & Belum Bayar ---------------- */
 function tag(s) {
   return s === "Lunas"
-    ? '<span class="tag lunas">✅ Lunas</span>'
-    : '<span class="tag belum">⏳ Belum Bayar</span>';
+    ? '<span class="tag lunas">Lunas</span>'
+    : '<span class="tag belum">Belum Bayar</span>';
+}
+
+function getMetodeTag(status, metode) {
+  if (status !== "Lunas") return '<span class="tag-empty">-</span>';
+  if (metode === "QRIS") return '<span class="tag qris">QRIS</span>';
+  return '<span class="tag cash">Cash</span>';
 }
 
 function renderHistori() {
   const searchInput = $("#histSearch");
   const q = (searchInput ? searchInput.value : "").toLowerCase().trim();
 
-  const list = ORDERS.slice()
-    .sort((a, b) => new Date(b.waktu) - new Date(a.waktu))
-    .filter(o => {
-      const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
-      return ((o.pelanggan || "") + " " + detailStr).toLowerCase().includes(q);
-    });
+  let list = ORDERS.slice().filter(o => {
+    const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
+    const dateStr = fmtTime(o.waktu);
+    return ((o.pelanggan || "") + " " + detailStr + " " + dateStr).toLowerCase().includes(q);
+  });
 
-  const mobileContainer = $("#histMobileCards");
+  list = sortByTanggal(list, arahHistori);
 
-  if (!list.length) {
-    if (mobileContainer) mobileContainer.innerHTML = '<div class="empty">📜 Belum ada riwayat transaksi.</div>';
-    return;
+  const tb = $("#histBody");
+  if (tb) {
+    if (!list.length) {
+      tb.innerHTML = '<tr><td colspan="7" class="empty">📜 Belum ada riwayat transaksi.</td></tr>';
+    } else {
+      tb.innerHTML = list.map(o => {
+        const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
+        return `
+          <tr>
+            <td style="white-space: nowrap;">${fmtTime(o.waktu)}</td>
+            <td><strong>${o.pelanggan || "Tanpa Nama"}</strong></td>
+            <td class="small">${detailStr}</td>
+            <td class="num">${rp(o.total)}</td>
+            <td>${tag(o.status)}</td>
+            <td>${getMetodeTag(o.status, o.metode)}</td>
+            <td style="text-align:right;">
+              <button class="btn-danger-sm btn-delete-order" data-order-id="${o.id}">Hapus</button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
   }
 
+  const mobileContainer = $("#histMobileCards");
   if (mobileContainer) {
-    mobileContainer.innerHTML = list.map(o => {
-      const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
-      return `
-        <div class="trx-card">
-          <div class="trx-card-head">
-            <span>${fmtTime(o.waktu)}</span>
-            ${tag(o.status)}
-          </div>
-          <div class="trx-card-cust">${o.pelanggan || "Pelanggan Umum"}</div>
-          <div class="trx-card-detail">${detailStr}</div>
-          <div class="trx-card-foot">
-            <div>
-              <span class="small" style="display:block;">Total</span>
-              <span class="trx-card-total">${rp(o.total)}</span>
+    if (!list.length) {
+      mobileContainer.innerHTML = '<div class="empty">📜 Belum ada riwayat transaksi.</div>';
+    } else {
+      mobileContainer.innerHTML = list.map(o => {
+        const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
+        return `
+          <div class="trx-card">
+            <div class="trx-card-head">
+              <span>${fmtTime(o.waktu)}</span>
+              <div style="display: flex; gap: 4px;">
+                ${tag(o.status)}
+                ${getMetodeTag(o.status, o.metode)}
+              </div>
             </div>
-            <button class="btn-danger-sm btn-delete-order" data-order-id="${o.id}">Hapus</button>
+            <div class="trx-card-cust">${o.pelanggan || "Tanpa Nama"}</div>
+            <div class="trx-card-detail">${detailStr}</div>
+            <div class="trx-card-foot">
+              <div>
+                <span class="small" style="display:block;">Total</span>
+                <span class="trx-card-total">${rp(o.total)}</span>
+              </div>
+              <button class="btn-danger-sm btn-delete-order" data-order-id="${o.id}">Hapus</button>
+            </div>
           </div>
-        </div>
-      `;
-    }).join("");
+        `;
+      }).join("");
+    }
   }
 
   // Bind Delete buttons in Histori
@@ -1057,7 +1272,7 @@ function renderBelum() {
       const detailStr = o.detail || (o.items || []).map(i => `${i.qty}x ${i.nama}`).join(", ");
       return `
         <tr>
-          <td>${fmtTime(o.waktu)}</td>
+          <td style="white-space: nowrap;">${fmtTime(o.waktu)}</td>
           <td><strong>${o.pelanggan || "Pelanggan Umum"}</strong></td>
           <td class="small">${detailStr}</td>
           <td class="num">${rp(o.total)}</td>
@@ -1094,19 +1309,8 @@ function renderBelum() {
   }
 
   $$("#view-belum .btn-sm[data-id]").forEach(b => {
-    b.onclick = async () => {
-      b.disabled = true;
-      b.textContent = "Processing...";
-      try {
-        await setPaid(b.dataset.id);
-        await loadData();
-        refreshAll();
-        toast("Status berhasil diubah ke Lunas ✓", "success");
-      } catch (e) {
-        toast("Gagal: " + e.message, "error");
-        b.disabled = false;
-        b.textContent = "Tandai Lunas";
-      }
+    b.onclick = () => {
+      openPaymentMethodModal(b.dataset.id, b);
     };
   });
 
@@ -1166,13 +1370,22 @@ async function init() {
   }
 
   // Setup Keuangan Filter
-  $$("#keuFilter .chip").forEach(c => {
+  $$("#keuFilter .chip[data-range]").forEach(c => {
     c.onclick = () => {
       keuRange = c.dataset.range;
-      $$("#keuFilter .chip").forEach(x => x.classList.toggle("active", x === c));
+      $$("#keuFilter .chip[data-range]").forEach(x => x.classList.toggle("active", x === c));
       renderKeuangan();
     };
   });
+
+  const btnKeuSort = $("#btnKeuSort");
+  if (btnKeuSort) {
+    btnKeuSort.onclick = () => {
+      keuSortOrder = keuSortOrder === "desc" ? "asc" : "desc";
+      btnKeuSort.textContent = `📅 Urutkan: ${keuSortOrder === "desc" ? "Terbaru ↓" : "Terlama ↑"}`;
+      renderKeuangan();
+    };
+  }
 
   // Setup Pengeluaran Filter
   $$("#expFilter .chip").forEach(c => {
@@ -1182,6 +1395,32 @@ async function init() {
       renderPengeluaran();
     };
   });
+
+  // Setup Histori Sorting
+  const sortHistWaktu = $("#sortHistWaktu");
+  if (sortHistWaktu) {
+    sortHistWaktu.onclick = toggleSortHistori;
+  }
+
+  // Payment Method Modal bindings
+  const btnPayCash = $("#btnPayCash");
+  if (btnPayCash) {
+    btnPayCash.onclick = () => handleProcessMarkPaid("Cash");
+  }
+  const btnPayQris = $("#btnPayQris");
+  if (btnPayQris) {
+    btnPayQris.onclick = () => handleProcessMarkPaid("QRIS");
+  }
+  const btnCancelPay = $("#btnCancelPay");
+  if (btnCancelPay) {
+    btnCancelPay.onclick = closePaymentMethodModal;
+  }
+  const methodBackdrop = $("#methodBackdrop");
+  if (methodBackdrop) {
+    methodBackdrop.onclick = (e) => {
+      if (e.target === methodBackdrop) closePaymentMethodModal();
+    };
+  }
 
   // Form submit event for Expense
   const expForm = $("#expForm");

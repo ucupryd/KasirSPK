@@ -91,7 +91,9 @@
 
       <div class="toolbar" id="keuFilter">
         <button class="chip active" data-range="today">Hari Ini</button>
+        <button class="chip" data-range="7days">7 Hari Terakhir</button>
         <button class="chip" data-range="all">Semua Waktu</button>
+        <button class="chip" id="btnKeuSort" style="margin-left: auto;">📅 Urutkan: Terbaru ↓</button>
       </div>
 
       <!-- Hero Financial Stat Cards (Pemasukan, Pengeluaran, Laba/Rugi) -->
@@ -123,6 +125,26 @@
               </tr>
             </thead>
             <tbody id="topBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Klasemen Pelanggan Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>👑 Klasemen Pelanggan (Loyalitas)</span>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Peringkat</th>
+                <th>Nama Pelanggan</th>
+                <th class="num">Jumlah Transaksi</th>
+                <th class="num">Total Belanja</th>
+              </tr>
+            </thead>
+            <tbody id="klasemenBody"></tbody>
           </table>
         </div>
       </div>
@@ -207,11 +229,28 @@
 
       <div class="search-wrapper">
         <span class="search-icon">🔍</span>
-        <input class="searchbox" id="histSearch" placeholder="Cari nama pelanggan atau item menu..."
+        <input class="searchbox" id="histSearch" placeholder="Cari nama pelanggan, item, atau tanggal..."
           aria-label="Cari histori" />
       </div>
 
-
+      <div class="panel">
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable" id="sortHistWaktu" style="cursor: pointer; user-select: none;">Waktu <span id="sortHistIcon">↓</span></th>
+                <th>Pelanggan</th>
+                <th>Detail Items</th>
+                <th class="num">Total</th>
+                <th>Status</th>
+                <th>Metode</th>
+                <th style="text-align:right;">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="histBody"></tbody>
+          </table>
+        </div>
+      </div>
 
       <div id="histMobileCards" class="mobile-cards"></div>
     </section>
@@ -270,6 +309,19 @@
       </div>
       <div style="text-align:center; margin-bottom:16px;" id="receiptStatusTag"></div>
       <button class="btn-primary" id="receiptNew">Pesanan Baru</button>
+    </div>
+  </div>
+
+  <!-- Modal Pilih Metode Pembayaran (Payment Method Selection) -->
+  <div class="modal-backdrop" id="methodBackdrop">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Pilih Metode Pembayaran">
+      <h2 style="margin-bottom: 8px; text-align: center;">Pilih Metode Pembayaran</h2>
+      <p style="color: var(--text-2); text-align: center; margin-bottom: 20px; font-size: 14px;">Silakan pilih metode pembayaran untuk pesanan ini.</p>
+      <div style="display: grid; grid-template-columns: 1fr; gap: 10px; width: 100%;">
+        <button class="btn-primary" id="btnPayCash" style="background: var(--green); box-shadow: 0 2px 8px rgba(70, 161, 113, .25);">💵 Cash</button>
+        <button class="btn-primary" id="btnPayQris" style="background: #6952E0; box-shadow: 0 2px 8px rgba(105, 82, 224, .25);">📱 QRIS</button>
+        <button class="btn-ghost" id="btnCancelPay" style="margin-top: 4px;">Batal</button>
+      </div>
     </div>
   </div>
 

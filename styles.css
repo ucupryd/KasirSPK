@@ -897,7 +897,8 @@ main {
 
   .fab-cart,
   .sheet,
-  .sheet-backdrop {
+  .sheet-backdrop,
+  .mobile-cards {
     display: none !important;
   }
 }
@@ -1066,7 +1067,7 @@ tr:last-child td {
   border-bottom: none;
 }
 
-td.num {
+.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
@@ -1088,6 +1089,23 @@ td.num {
 .tag.belum {
   background: var(--orange-soft);
   color: var(--orange);
+}
+
+.tag.cash {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.tag.qris {
+  background: #EFEBFC;
+  color: #6952E0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tag.qris {
+    background: rgba(105, 82, 224, 0.15);
+    color: #9D8EF2;
+  }
 }
 
 .btn-sm {
