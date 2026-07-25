@@ -67,7 +67,8 @@ function closePaymentMethodModal() {
 }
 
 async function handleProcessMarkPaid(metode) {
-  if (!pendingPaidId) return;
+  const targetId = pendingPaidId;
+  if (!targetId) return;
   const b = pendingButton;
   if (b) {
     b.disabled = true;
@@ -75,7 +76,7 @@ async function handleProcessMarkPaid(metode) {
   }
   closePaymentMethodModal();
   try {
-    await setPaid(pendingPaidId, metode);
+    await setPaid(targetId, metode);
     await loadData();
     refreshAll();
     toast(`Status berhasil diubah ke Lunas (${metode}) ✓`, "success");
